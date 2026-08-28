@@ -874,13 +874,14 @@ class Game {
         if (this.totalAttacks() === 0) this.gameOver();
     }
 
-    /* Sotto quanti attacchi in mano la luce rende qualcosa. Cresce con l'onda:
-       piu' si va avanti, piu' e' facile essere "in difficolta'". */
-    lightSoglia() { return Math.floor(this.wave / D.BAL.lightRefundDiv); }
+    /* Sotto quanti attacchi di UN tipo la luce interviene. */
+    lightSoglia() { return D.BAL.lightRefundMax; }
 
-    /* Vero se il prossimo colpo di luce rendera' un attacco. Si guarda la mano
-       di adesso: il pulsante lo dice prima che tu lo prema. */
-    lightArmata() { return this.totalAttacks() < this.lightSoglia(); }
+    /* Vero se il prossimo colpo di luce rendera' un attacco: guarda soltanto il
+       tipo di cui si ha di meno, che e' anche quello che verrebbe rimborsato.
+       Spendere luce non cambia quel conto (la luce non e' mai il bersaglio),
+       quindi quello che dice il pulsante e' quello che succede. */
+    lightArmata() { return (this.attacks[this.lightBersaglio()] || 0) < this.lightSoglia(); }
 
     /* Il tipo di cui si e' piu' poveri, fra quelli diversi dalla luce. A parita'
        vince il primo nell'ordine degli elementi: deve essere prevedibile, non
@@ -974,7 +975,8 @@ class Game {
             dati.push([t, n]);
         });
         if (dati.length) Sfx.reward();
-        this.toast('Quest complete — ' + this.quest.title);
+        /* niente messaggino: la quest la racconta il resoconto dell'onda, con
+           il bollo e i gettoni del premio. Due volte la stessa cosa e' rumore. */
         return dati;   /* serve al resoconto: quanto ha pagato, elemento per elemento */
     }
 
@@ -1205,11 +1207,9 @@ class Game {
        deve poter leggere senza indovinarla. */
     attackNote(e) {
         if (e === 'light') {
-            const soglia = this.lightSoglia();
-            if (!soglia) return 'gives nothing back yet';
             return this.lightArmata()
-                ? 'ready: +1 of your scarcest type'
-                : 'gives back only under ' + soglia + ' attacks in hand';
+                ? 'ready: +1 ' + this.lightBersaglio()
+                : 'pays only a type left under ' + this.lightSoglia();
         }
         if (e === 'darkness') return '−1 other attack · 14 if chained';
         const forte = D.STRONG_VS[e];
@@ -1235,8 +1235,8 @@ class Game {
             note.appendChild(b);
         };
         dice('The wheel', 'Fire burns nature, nature drinks water, water quenches fire. Double damage forward, half damage back.');
-        dice('Light', 'Weak on its own. It pays back 1 attack of the type you have least of, but only while your whole hand is under ' +
-                      this.lightSoglia() + ' attacks — half the wave number. When the run goes well, light stops giving.');
+        dice('Light', 'Weak on its own. It pays back 1 attack of the type you have least of — but only while you are down to fewer than ' +
+                      this.lightSoglia() + ' of it. It patches holes; it does not fill the pantry. With every type stocked, light gives nothing.');
         dice('Darkness', 'Hits hard but eats one other attack every time. Two darkness in a row and the second one hits for 14.');
         dice('Attacks are the clock', 'Every attack you spend is gone. The game ends when your hand is empty, not when your health runs out.');
 
@@ -1470,7 +1470,7 @@ class Game {
     claimArtifact(a) {
         if (a.slot === 'blessing') {
             if (a.grant)         { ELEMENTS.forEach(e => { this.attacks[e] += a.grant; this.floatOnButton(e, +a.grant); }); Sfx.gain(); }
-            if (a.skipChallenge) { this.skipChallenge = true; this.toast('The next boss challenge will not bite'); }
+            if (a.skipChallenge) this.skipChallenge = true;
         } else {
             this.artifacts.push(a);
             /* un'arma senza attacchi del suo tipo non serve a niente: se la
@@ -1481,7 +1481,8 @@ class Game {
                 a.els.forEach(e => { this.attacks[e] += n; this.floatOnButton(e, +n); });
                 Sfx.gain();
             }
-            this.toast('Artifact claimed — ' + a.name);
+            /* nemmeno qui: l'artefatto lo si e' appena visto in grande, con
+               nome e descrizione */
         }
     }
 

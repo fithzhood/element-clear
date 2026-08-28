@@ -69,12 +69,14 @@ const BAL = {
     chReflect:   5,      /* Reflective Aura: danno per ogni attacco perso          */
     chArmor:     1,      /* Elemental Armor: danno tolto in piu' a ogni colpo      */
     /* La luce rendeva un attacco a caso a ogni colpo, sempre: era un motore che
-       si autoalimentava, e chi partiva bene non si fermava piu'. Adesso rende
-       solo quando la mano e' gia' magra — meno di `onda / lightRefundDiv`
-       attacchi in tutto — e rende il tipo di cui si e' piu' poveri, non uno a
-       caso. Da fonte inesauribile a rete di sicurezza: se la corsa va bene la
-       luce smette di pagare, e per riaccenderla bisogna spendere. */
-    lightRefundDiv: 2,
+       si autoalimentava, e chi partiva bene non si fermava piu'.
+
+       Adesso guarda una cosa sola: **il tipo di cui si ha di meno**. Se ne
+       restano meno di `lightRefundMax`, la luce ne rende uno; se anche il piu'
+       scarso e' rifornito, non rende niente. Rattoppa i buchi, non riempie la
+       dispensa — e la regola si legge in una riga guardando i pulsanti, senza
+       dover sommare la mano. */
+    lightRefundMax: 3,
 
     nerfedPicks: 2,      /* artefatti da scegliere se il boss arriva senza sfida.
                             Misurato: a 2 la calma del saggio resta un affare
