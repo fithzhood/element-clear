@@ -522,6 +522,11 @@ class Game {
             rewardTtl: $('#reward-title'),
             rewardNext: $('#reward-next'),
             rewardLegend: $('#reward-legend'),
+            owned:        $('#reward-owned'),
+            help:         $('#help'),
+            helpRows:     $('#help-rows'),
+            helpNotes:    $('#help-notes'),
+            helpGo:       $('#btn-help-go'),
             ending:    $('#ending'),
             endlessTag: $('#endless-tag'),
             over:      $('#gameover'),
@@ -831,7 +836,7 @@ class Game {
         const chained = element === 'darkness' && this.lastAttack === 'darkness';
 
         this.attacks[element]--;
-        if (element === 'light')         this.addRandomAttack();
+        if (element === 'light')         this.lightRefund();
         else if (element === 'darkness') this.removeRandomAttack();
 
         this.enemy.hp -= dmg;
@@ -869,11 +874,33 @@ class Game {
         if (this.totalAttacks() === 0) this.gameOver();
     }
 
-    addRandomAttack() {
-        const t = rand(ELEMENTS.filter(e => e !== 'light'));
+    /* Sotto quanti attacchi in mano la luce rende qualcosa. Cresce con l'onda:
+       piu' si va avanti, piu' e' facile essere "in difficolta'". */
+    lightSoglia() { return Math.floor(this.wave / D.BAL.lightRefundDiv); }
+
+    /* Vero se il prossimo colpo di luce rendera' un attacco. Si guarda la mano
+       di adesso: il pulsante lo dice prima che tu lo prema. */
+    lightArmata() { return this.totalAttacks() < this.lightSoglia(); }
+
+    /* Il tipo di cui si e' piu' poveri, fra quelli diversi dalla luce. A parita'
+       vince il primo nell'ordine degli elementi: deve essere prevedibile, non
+       casuale, se no non si puo' pianificare. */
+    lightBersaglio() {
+        const altri = ELEMENTS.filter(e => e !== 'light');
+        let scelto = altri[0];
+        altri.forEach(e => { if ((this.attacks[e] || 0) < (this.attacks[scelto] || 0)) scelto = e; });
+        return scelto;
+    }
+
+    /* Rende un attacco solo se la mano e' sotto la soglia. Va chiamata DOPO
+       aver speso il colpo di luce: conta la mano com'e' rimasta. */
+    lightRefund() {
+        if (!this.lightArmata()) return false;
+        const t = this.lightBersaglio();
         this.attacks[t]++;
         this.floatOnButton(t, +1);
         Sfx.gain();
+        return true;
     }
 
     removeRandomAttack() {
@@ -978,6 +1005,16 @@ class Game {
             scudi: []
         };
         if (resoconto.quest && resoconto.quest.fatta) resoconto.quest.premi = this.grantQuestReward();
+        /* il boss disarmato paga anche in luce: da quando ne paga due di
+           artefatti invece di tre, il solo sconto non ripagava piu' la scelta
+           spesa per la calma del saggio */
+        if (this.enemy.boss && this.bossNerfed && D.BAL.nerfedLight > 0) {
+            this.attacks.light += D.BAL.nerfedLight;
+            this.floatOnButton('light', +D.BAL.nerfedLight);
+            this.renderAttacks();
+            Sfx.reward();
+            if (resoconto.sfida) resoconto.sfida.premi = [['light', D.BAL.nerfedLight]];
+        }
         this.quest = null;
         this.renderQuest();
 
@@ -1051,6 +1088,12 @@ class Game {
             testa.appendChild(el('span', 'rep-stamp', r.sfida.saltata ? 'skipped' : 'survived'));
             b.appendChild(testa);
             b.appendChild(el('div', 'rep-title', r.sfida.title));
+            if (r.sfida.premi && r.sfida.premi.length) {
+                const riga = el('div', 'rep-line');
+                riga.appendChild(el('span', 'rep-lbl', 'Reward'));
+                riga.appendChild(chipRow(r.sfida.premi));
+                b.appendChild(riga);
+            }
         }
 
         if (r.scudi.length) {
@@ -1108,6 +1151,8 @@ class Game {
 
         const box = this.dom.rewardNext;
         box.hidden = false;
+        /* la collezione la rimette in piedi solo la schermata degli artefatti */
+        this.dom.owned.hidden = true;
         box.className = prossimo + (boss ? ' is-boss' : '');
         const slot = box.querySelector('.rn-sigil');
         slot.innerHTML = '';
@@ -1121,38 +1166,82 @@ class Game {
         leg.hidden = !conLegenda;
         if (!conLegenda) return;
 
-        ELEMENTS.forEach(e => {
-            const riga = el('div', 'leg-row ' + e);
-            const dmg = this.previewDamage(e, prossimo);
-            const su = D.isSuperEffective(e, prossimo);
-            const giu = D.isNotEffective(e, prossimo);
-            if (su) riga.classList.add('super');
-            else if (giu) riga.classList.add('weak');
+        ELEMENTS.forEach(e => leg.appendChild(this.legendRow(e, prossimo, this.previewDamage(e, prossimo))));
+    }
 
-            const chip = el('span', 'leg-sigil');
-            chip.appendChild(sigil(e));
-            riga.appendChild(chip);
-            riga.appendChild(el('span', 'leg-name', ELEMENT_INFO[e].label));
+    /* Una riga della tabella degli attacchi. La usano in due: la legenda delle
+       ricompense (contro chi arriva) e il prontuario (contro chi e' in scena).
+       Stessa riga, cosi' le due non possono raccontare cose diverse. */
+    legendRow(e, contro, dmg) {
+        const riga = el('div', 'leg-row ' + e);
+        const su = D.isSuperEffective(e, contro);
+        const giu = D.isNotEffective(e, contro);
+        if (su) riga.classList.add('super');
+        else if (giu) riga.classList.add('weak');
 
-            const hai = el('span', 'leg-have');
-            hai.appendChild(el('b', null, String(this.attacks[e] || 0)));
-            hai.appendChild(el('span', 'leg-have-lbl', 'in hand'));
-            if ((this.attacks[e] || 0) === 0) hai.classList.add('zero');
-            riga.appendChild(hai);
+        const chip = el('span', 'leg-sigil');
+        chip.appendChild(sigil(e));
+        riga.appendChild(chip);
+        riga.appendChild(el('span', 'leg-name', ELEMENT_INFO[e].label));
 
-            /* la spada dice che il numero accanto e' il danno */
-            const spada = el('span', 'leg-sword');
-            spada.appendChild(sigil('sword'));
-            riga.appendChild(spada);
-            riga.appendChild(el('b', 'leg-dmg', String(dmg)));
-            riga.appendChild(el('span', 'leg-arrow', su ? '▲' : (giu ? '▼' : '')));
+        const hai = el('span', 'leg-have');
+        hai.appendChild(el('b', null, String(this.attacks[e] || 0)));
+        hai.appendChild(el('span', 'leg-have-lbl', 'in hand'));
+        if ((this.attacks[e] || 0) === 0) hai.classList.add('zero');
+        riga.appendChild(hai);
 
-            let nota = '';
-            if (e === 'light')    nota = '+1 random attack back';
-            if (e === 'darkness') nota = '−1 attack · 14 chained';
-            riga.appendChild(el('span', 'leg-note', nota));
-            leg.appendChild(riga);
-        });
+        /* la spada dice che il numero accanto e' il danno */
+        const spada = el('span', 'leg-sword');
+        spada.appendChild(sigil('sword'));
+        riga.appendChild(spada);
+        riga.appendChild(el('b', 'leg-dmg', String(dmg)));
+        riga.appendChild(el('span', 'leg-arrow', su ? '▲' : (giu ? '▼' : '')));
+        riga.appendChild(el('span', 'leg-note', this.attackNote(e)));
+        return riga;
+    }
+
+    /* L'effetto speciale di un elemento, detto in una riga. Per la luce dice
+       anche se in questo momento e' carica o no: e' la parte che il giocatore
+       deve poter leggere senza indovinarla. */
+    attackNote(e) {
+        if (e === 'light') {
+            const soglia = this.lightSoglia();
+            if (!soglia) return 'gives nothing back yet';
+            return this.lightArmata()
+                ? 'ready: +1 of your scarcest type'
+                : 'gives back only under ' + soglia + ' attacks in hand';
+        }
+        if (e === 'darkness') return '−1 other attack · 14 if chained';
+        const forte = D.STRONG_VS[e];
+        const debole = ELEMENTS.find(x => D.STRONG_VS[x] === e);
+        return '×2 vs ' + forte + ' · ½ vs ' + debole;
+    }
+
+    /* ------------------------------------------------------- prontuario */
+
+    showHelp() {
+        const righe = this.dom.helpRows;
+        righe.innerHTML = '';
+        const contro = this.enemy ? this.enemy.element : 'fire';
+        ELEMENTS.forEach(e => righe.appendChild(
+            this.legendRow(e, contro, this.enemy ? this.damageOf(e) : D.baseDamage(e, contro, false, false))));
+
+        const note = this.dom.helpNotes;
+        note.innerHTML = '';
+        const dice = (titolo, testo) => {
+            const b = el('div', 'help-note');
+            b.appendChild(el('b', null, titolo));
+            b.appendChild(el('span', null, testo));
+            note.appendChild(b);
+        };
+        dice('The wheel', 'Fire burns nature, nature drinks water, water quenches fire. Double damage forward, half damage back.');
+        dice('Light', 'Weak on its own. It pays back 1 attack of the type you have least of, but only while your whole hand is under ' +
+                      this.lightSoglia() + ' attacks — half the wave number. When the run goes well, light stops giving.');
+        dice('Darkness', 'Hits hard but eats one other attack every time. Two darkness in a row and the second one hits for 14.');
+        dice('Attacks are the clock', 'Every attack you spend is gone. The game ends when your hand is empty, not when your health runs out.');
+
+        this.dom.help.hidden = false;
+        this.dom.helpGo.onclick = () => { this.dom.help.hidden = true; };
     }
 
     showPackages() {
@@ -1267,6 +1356,10 @@ class Game {
             this.artifactPicks > 1 ? 'The boss falls unarmed — claim ' + this.artifactPicks + ' artifacts'
                                    : (rimaste ? 'One more artifact'
                                               : 'The boss falls — claim an artifact');
+
+        /* Quello che si ha gia' resta sotto gli occhi mentre si sceglie: senza,
+           per sapere se un doppione conviene bisognava ricordarselo. */
+        this.renderOwned();
         this.dom.rewardIn.innerHTML = '';
         this.dom.rewardIn.className = 'artifacts';
 
@@ -1286,6 +1379,29 @@ class Game {
 
         this.dom.reward.hidden = false;
         Sfx.reward();
+    }
+
+    /* La collezione posseduta, dentro il pannello della scelta. */
+    renderOwned() {
+        const box = this.dom.owned;
+        box.innerHTML = '';
+        if (!this.artifacts.length) { box.hidden = true; return; }
+        box.hidden = false;
+        box.appendChild(el('span', 'owned-lbl', 'yours'));
+        const riga = el('div', 'owned-row');
+        const conta = new Map();
+        this.artifacts.forEach(a => conta.set(a.id, (conta.get(a.id) || 0) + 1));
+        conta.forEach((n, id) => {
+            const a = D.ARTIFACT_BY_ID[id];
+            const chip = el('button', 'owned-item ' + a.slot);
+            chip.style.setProperty('--a1', ELEMENT_INFO[a.els[0]].color);
+            chip.style.setProperty('--a2', ELEMENT_INFO[a.els[a.els.length - 1]].color);
+            chip.appendChild(artifactThumb(a, true));
+            if (n > 1) chip.appendChild(el('span', 'shelf-n', '×' + n));
+            chip.onclick = () => this.toast(a.name + (n > 1 ? ' ×' + n : '') + ' — ' + a.desc);
+            riga.appendChild(chip);
+        });
+        box.appendChild(riga);
     }
 
     async takeArtifact(a) {
@@ -1492,6 +1608,8 @@ class Game {
                 !(this.challenge && this.challenge.type === 'noEffectiveDamage')) btn.classList.add('super');
             else if (D.isNotEffective(e, this.enemy.element)) btn.classList.add('weak');
             if (e === 'darkness' && this.lastAttack === 'darkness') btn.classList.add('chained');
+            /* la luce carica si vede: senza, la soglia sarebbe una regola invisibile */
+            if (e === 'light' && this.lightArmata()) btn.classList.add('charged');
             if (count <= 0 || locked) btn.classList.add('off');
             btn.disabled = count <= 0 || locked;
 
@@ -1500,6 +1618,8 @@ class Game {
             btn.appendChild(ring);
             btn.appendChild(el('div', 'atk-dmg', String(dmg)));
             btn.appendChild(el('div', 'atk-count', String(count)));
+            if (btn.classList.contains('charged'))
+                btn.appendChild(el('div', 'atk-mark', '+1'));
             btn.onclick = () => this.attack(e);
             box.appendChild(btn);
         });
@@ -1633,6 +1753,8 @@ class Game {
             this.dom.music.setAttribute('aria-label', on ? 'Music on' : 'Music off');
         };
         this.dom.music.classList.toggle('muted', !Music.on);
+
+        $('#btn-help').onclick = () => { Sfx.tap(); this.showHelp(); };
     }
 
     bindDebugKeys() {

@@ -68,10 +68,24 @@ const BAL = {
     chConvert:   5,      /* Conversion Aura: quanti attacchi converte              */
     chReflect:   5,      /* Reflective Aura: danno per ogni attacco perso          */
     chArmor:     1,      /* Elemental Armor: danno tolto in piu' a ogni colpo      */
-    nerfedPicks: 3       /* artefatti da scegliere se il boss arriva senza sfida.
+    /* La luce rendeva un attacco a caso a ogni colpo, sempre: era un motore che
+       si autoalimentava, e chi partiva bene non si fermava piu'. Adesso rende
+       solo quando la mano e' gia' magra — meno di `onda / lightRefundDiv`
+       attacchi in tutto — e rende il tipo di cui si e' piu' poveri, non uno a
+       caso. Da fonte inesauribile a rete di sicurezza: se la corsa va bene la
+       luce smette di pagare, e per riaccenderla bisogna spendere. */
+    lightRefundDiv: 2,
+
+    nerfedPicks: 2,      /* artefatti da scegliere se il boss arriva senza sfida.
                             Misurato: a 2 la calma del saggio resta un affare
                             mediocre (25% contro 28%), a 3 va in pari, a 4
                             diventa la carta obbligata (39%). */
+    /* Con `nerfedPicks` sceso da 3 a 2 la calma restava troppo cara: costa una
+       scelta adesso e paga un artefatto in meno dopo. Il pareggio non lo fa
+       un terzo artefatto — misurato, non sposta niente perche' la partita si
+       decide all'onda 21 — ma **attacchi di luce alla morte di quel boss**:
+       arrivano subito, e la luce e' la valuta che riaccende il motore. */
+    nerfedLight: 5
 };
 
 /* ------------------------------------------------------------------ mostri */
@@ -323,7 +337,9 @@ function applyBal() {
     const calma = ARTIFACTS.find(a => a.id === 'b2');
     if (calma) {
         calma.desc = 'The next boss challenge has no effect · that boss pays ' +
-                     BAL.nerfedPicks + ' artifacts instead of 1';
+                     BAL.nerfedPicks + ' artifacts instead of 1' +
+                     (BAL.nerfedLight > 0
+                        ? ' and ' + BAL.nerfedLight + ' light attacks when it falls' : '');
     }
 
     /* le sfide dei boss: la descrizione segue i numeri, non li ripete a mano */
