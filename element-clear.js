@@ -670,8 +670,11 @@ class Game {
 
         ELEMENTS.forEach(e => {
             const riga = el('div', 'leg-row ' + e);
-            if (D.isSuperEffective(e, prossimo)) riga.classList.add('super');
-            else if (D.isNotEffective(e, prossimo)) riga.classList.add('weak');
+            const dmg = this.previewDamage(e, prossimo);
+            const su = D.isSuperEffective(e, prossimo);
+            const giu = D.isNotEffective(e, prossimo);
+            if (su) riga.classList.add('super');
+            else if (giu) riga.classList.add('weak');
 
             const chip = el('span', 'leg-sigil');
             chip.appendChild(sigil(e));
@@ -684,11 +687,16 @@ class Game {
             if ((this.attacks[e] || 0) === 0) hai.classList.add('zero');
             riga.appendChild(hai);
 
-            riga.appendChild(el('b', 'leg-dmg', String(this.previewDamage(e, prossimo))));
+            /* la spada dice che il numero accanto e' il danno */
+            const spada = el('span', 'leg-sword');
+            spada.appendChild(sigil('sword'));
+            riga.appendChild(spada);
+            riga.appendChild(el('b', 'leg-dmg', String(dmg)));
+            riga.appendChild(el('span', 'leg-arrow', su ? '▲' : (giu ? '▼' : '')));
 
             let nota = '';
-            if (e === 'light')    nota = 'gives back a random attack';
-            if (e === 'darkness') nota = 'costs another attack · 14 chained';
+            if (e === 'light')    nota = '+1 random attack back';
+            if (e === 'darkness') nota = '−1 attack · 14 chained';
             riga.appendChild(el('span', 'leg-note', nota));
             leg.appendChild(riga);
         });

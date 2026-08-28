@@ -473,33 +473,41 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 #reward-next.darkness { --n: #b49bff }
 
 #reward-legend { display: flex; flex-direction: column; gap: 3px; }
+
+/* caselle a larghezza fissa: cosi' le colonne stanno incolonnate davvero,
+   invece di spostarsi a seconda che il numero abbia la freccia o no */
 .leg-row {
-    display: flex; align-items: center; gap: 8px;
-    padding: 4px 10px; border-radius: 9px;
+    display: grid;
+    grid-template-columns: 17px 1fr 50px 16px 24px 11px minmax(0, 1.3fr);
+    align-items: center;
+    gap: 0 6px;
+    padding: 5px 10px; border-radius: 9px;
     background: rgba(255, 255, 255, .04);
     font-size: .72rem;
+    line-height: 1;
 }
 .leg-row .leg-sigil { display: flex; font-size: 15px; }
-.leg-name { width: 58px; font-weight: 700; letter-spacing: .02em; }
-.leg-have {
-    display: flex; align-items: baseline; gap: 3px; width: 54px;
-    font-variant-numeric: tabular-nums;
-}
-.leg-have b { font-size: .88rem; font-weight: 900; }
-.leg-have-lbl { font-size: .5rem; letter-spacing: .08em; text-transform: uppercase; opacity: .45; }
+.leg-name { font-weight: 700; letter-spacing: .02em; }
+
+.leg-have { display: flex; align-items: center; gap: 4px; line-height: 1; }
+.leg-have b { font-size: .86rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.leg-have-lbl { font-size: .5rem; letter-spacing: .06em; text-transform: uppercase; opacity: .45; }
 .leg-have.zero { opacity: .35; }
+
+.leg-sword { display: flex; justify-content: center; font-size: 15px; opacity: .6; }
 .leg-dmg {
-    min-width: 26px; text-align: right; font-size: .95rem; font-weight: 900;
-    font-variant-numeric: tabular-nums;
+    text-align: right; font-size: .95rem; font-weight: 900;
+    font-variant-numeric: tabular-nums; line-height: 1;
 }
-.leg-note { flex: 1; font-size: .6rem; opacity: .5; line-height: 1.15; }
+.leg-arrow { font-size: .52rem; text-align: center; opacity: .9; }
+.leg-note { font-size: .58rem; opacity: .5; line-height: 1.15; }
+
 .leg-row.super {
     background: rgba(255, 255, 255, .13);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .3);
 }
-.leg-row.super .leg-dmg::after { content: '▲'; font-size: .55em; vertical-align: .35em; margin-left: 2px; }
+.leg-row.super .leg-sword { opacity: .95; }
 .leg-row.weak { opacity: .5; }
-.leg-row.weak .leg-dmg::after { content: '▼'; font-size: .55em; vertical-align: .1em; margin-left: 2px; }
 
 /* pacchetti */
 .packs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
