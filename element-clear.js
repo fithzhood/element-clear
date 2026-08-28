@@ -12,6 +12,10 @@ const PARAMS   = new URLSearchParams(location.search);
 const DEBUG    = PARAMS.has('debug');
 const FAST     = PARAMS.has('fast');          // azzera le attese: usato dal banco di prova
 const SAVE_KEY = 'elementBattle.save.v2';
+/* La marca di versione che sta gia' sul tag <script>. Serve ai file che il
+   gioco chiede da solo (i brani): senza, un brano sostituito resterebbe nella
+   cache della CDN e del telefono. Css e js la ricevono dall'html. */
+const VER = ((document.currentScript && document.currentScript.src || '').match(/\?v=\d+/) || [''])[0];
 /* Ultima ondata della campagna: PV massimi 100, il boss dell'ultimo livello di illustrazione. */
 const FINAL_WAVE = 91;
 const HS_KEY   = 'elementBattle.best.v2';
@@ -293,155 +297,181 @@ const Particles = {
 
 /* ---------------------------------------------------------------- musica
 
-   Sottofondo sintetizzato, come gli effetti: nessun file da scaricare, quindi
-   funziona anche dentro l'APK senza rete.
+   Due brani veri, generati con Suno e chiusi su se stessi con ffmpeg
+   (`audio/chiudi-loop.py`): `musica/tema.ogg` per le onde normali,
+   `musica/boss.ogg` per i boss. Stessa tonalita' (Re minore) e stesso
+   livello (-18 LUFS), cosi' il passaggio si fa in **dissolvenza incrociata**
+   invece che con un taglio.
 
-   Tre voci sole: un tappeto tenuto grave, un arpeggio rado e un basso sui
-   tempi forti. Le note stanno su una **pentatonica minore**, che non stona mai
-   con se stessa: e' quello che rende ascoltabile per un'ora un accompagnamento
-   generato a caso. La tonica segue l'elemento del mostro in scena, cosi' la
-   musica cambia colore senza cambiare brano.
+   Perche' Ogg Opus e non m4a: misurato, l'AAC restituisce 512 campioni piu'
+   di quelli che ha ricevuto (riempimento in testa). Sono undici millesimi di
+   secondo, e bastano a far sentire la giunta a ogni giro. Opus e Vorbis
+   rendono la lunghezza esatta.
 
-   Sui boss il passo va da 70 a 104 battute al minuto, il basso batte su ogni
-   tempo invece che su due, e compare un'eco a meta' tempo: accelera senza
-   diventare un'altra cosa.
+   Perche' Web Audio e non un `<audio loop>`: serve la dissolvenza incrociata
+   fra due brani, e serve che il giro si richiuda al campione. Un
+   AudioBufferSourceNode con `loop = true` fa tutte e due le cose; un
+   elemento <audio> nessuna delle due in modo affidabile.
 
-   `passo(t, n)` prende il tempo come argomento e non legge l'orologio: cosi'
-   la stessa funzione si puo' far rendere a un OfflineAudioContext per
-   riascoltare il risultato fuori dal gioco (vedi `_musica.html`). */
+   Il boss si scarica **solo quando serve**: sono 800 KB che nelle prime nove
+   onde non servono a niente. Se all'onda 10 non e' ancora sceso, il tema
+   normale continua e il boss entra appena e' pronto — nessun silenzio. */
 const Music = {
-    ctx: null, master: null, pad: null, timer: null,
     on: localStorage.getItem('elementBattle.music') !== 'off',
+    ctx: null, master: null,
+    voci: {},            /* nome -> { src, gain } delle voci che stanno suonando */
+    acceso: false,       /* la partita e' in corso e il giocatore vuole musica */
+    sospesa: false,      /* fermata dal telefono in tasca, da riprendere al ritorno */
     boss: false,
-    root: 146.83,
-    prossimo: 0, battuta: 0,
+    INCROCIO: 1.8,       /* secondi di dissolvenza fra tema e boss */
 
-    /* gradi della pentatonica minore, in semitoni */
-    SCALA:  [0, 3, 5, 7, 10],
-    RADICE: { fire: 146.83, water: 110.00, nature: 98.00, light: 130.81, darkness: 82.41 },
-    BPM:    { calmo: 70, boss: 104 },
-    /* -1 = pausa. Le pause contano quanto le note: un arpeggio fitto stanca. */
-    ARPA_CALMA: [5, -1, 7, 8, -1, 6, 9, 7],
-    ARPA_BOSS:  [5,  7, 5, 8,  6, 9, 6, 10],
-
-    nota(grado) {
-        const ott = Math.floor(grado / 5);
-        const i = ((grado % 5) + 5) % 5;
-        return this.root * Math.pow(2, ott + this.SCALA[i] / 12);
-    },
-    durata() { return 60 / (this.boss ? this.BPM.boss : this.BPM.calmo); },
-
-    pizzico(t, freq, gain) {
-        const ctx = this.ctx;
-        const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
-        o.type = 'triangle';
-        o.frequency.setValueAtTime(freq, t);
-        f.type = 'lowpass';
-        f.frequency.setValueAtTime(1600, t);
-        f.frequency.exponentialRampToValueAtTime(600, t + 0.6);
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(gain, t + 0.03);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.95);
-        o.connect(f).connect(g).connect(this.master);
-        o.start(t); o.stop(t + 1);
+    brani: {
+        tema: { url: 'musica/tema.ogg' + VER },
+        boss: { url: 'musica/boss.ogg' + VER }
     },
 
-    basso(t, freq, gain) {
-        const ctx = this.ctx;
-        const o = ctx.createOscillator(), g = ctx.createGain();
-        o.type = 'sine';
-        o.frequency.setValueAtTime(freq, t);
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(gain, t + 0.04);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
-        o.connect(g).connect(this.master);
-        o.start(t); o.stop(t + 0.65);
-    },
-
-    /* il tappeto: due voci gravi appena scordate fra loro, sotto un filtro che
-       si apre e si chiude da solo ogni venti secondi */
-    tappeto() {
-        const ctx = this.ctx;
-        const g = ctx.createGain(); g.gain.value = 0.055;
-        const f = ctx.createBiquadFilter();
-        f.type = 'lowpass'; f.frequency.value = 480; f.Q.value = 0.6;
-        const lfo = ctx.createOscillator(), lg = ctx.createGain();
-        lfo.frequency.value = 0.05; lg.gain.value = 200;
-        lfo.connect(lg).connect(f.frequency);
-        lfo.start(0);
-        const voci = [1, 1.5].map((r, i) => {
-            const o = ctx.createOscillator();
-            o.type = i ? 'sine' : 'triangle';
-            o.frequency.value = this.root * r / 2;
-            o.detune.value = i ? 7 : -7;
-            o.connect(f);
-            o.start(0);
-            return o;
-        });
-        f.connect(g).connect(this.master);
-        this.pad = { voci: voci, lfo: lfo };
-    },
-
-    /* una battuta: l'arpeggio, l'eco dei boss e il basso */
-    passo(t, n) {
-        const i = ((n % 8) + 8) % 8;
-        const grado = (this.boss ? this.ARPA_BOSS : this.ARPA_CALMA)[i];
-        if (grado >= 0) this.pizzico(t, this.nota(grado), this.boss ? 0.05 : 0.038);
-        if (this.boss && (i === 3 || i === 7))
-            this.pizzico(t + this.durata() / 2, this.nota(grado + 2), 0.026);
-        if (this.boss)          this.basso(t, this.root / 2, i === 0 ? 0.07 : 0.042);
-        else if (i === 0 || i === 4) this.basso(t, this.root / 2, 0.05);
-    },
-
-    /* si scrivono in anticipo le battute dei prossimi 300 ms: l'orologio di
-       setInterval non e' abbastanza preciso per la musica, quello audio si' */
-    pump() {
-        const ora = this.ctx.currentTime;
-        if (this.prossimo < ora) this.prossimo = ora + 0.06;
-        while (this.prossimo < ora + 0.3) {
-            this.passo(this.prossimo, this.battuta++);
-            this.prossimo += this.durata();
+    /* Una rampa a potenza costante dal guadagno di adesso alla meta (1 o 0),
+       sulla stessa curva a seno che ffmpeg chiama `qsin`. Due rampe lineari
+       sommate darebbero un avvallamento di 3 dB a meta' strada, perche' i due
+       brani sono materiale scorrelato e si sommano in potenza, non in
+       ampiezza. Partendo dal punto in cui la curva si trova adesso, un
+       passaggio interrotto a meta' riparte senza scalino. */
+    rampa(param, meta, quanto) {
+        const t = this.ctx.currentTime;
+        const v = Math.min(1, Math.max(0, param.value));
+        /* dove siamo sulla curva: 0 = tutto giu', 1 = tutto su */
+        const x0 = (meta ? Math.asin(v) : Math.acos(v)) / (Math.PI / 2);
+        const durata = Math.max(0.04, quanto * (1 - x0));
+        const n = 32, c = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            const x = x0 + (1 - x0) * (i / (n - 1));
+            c[i] = meta ? Math.sin(x * Math.PI / 2) : Math.cos(x * Math.PI / 2);
         }
+        c[n - 1] = meta ? 1 : 0.0001;
+        /* `cancelScheduledValues` non ferma una curva **gia' partita**: toglie
+           solo gli appuntamenti futuri. Serve `cancelAndHoldAtTime`, che la
+           interrompe e tiene il valore raggiunto. */
+        if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(t);
+        else param.cancelScheduledValues(t);
+        try { param.setValueCurveAtTime(c, t, durata); }
+        catch (e) { param.linearRampToValueAtTime(c[n - 1], t + durata); }
+        return durata;
+    },
+
+    carica(nome) {
+        const b = this.brani[nome], ctx = this.ctx;
+        if (b.buffer)  return Promise.resolve(b.buffer);
+        if (b.chiesto) return b.chiesto;
+        if (!ctx)      return Promise.resolve(null);
+        b.chiesto = fetch(b.url)
+            .then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+            .then(a => new Promise((ok, no) => ctx.decodeAudioData(a, ok, no)))
+            .then(buf => { b.buffer = buf; return buf; })
+            /* un brano che non scende non deve fermare il gioco, e non deve
+               nemmeno restare in un errore per sempre: si potra' riprovare */
+            .catch(() => { b.chiesto = null; return null; });
+        return b.chiesto;
+    },
+
+    accendi(nome, quanto) {
+        const ctx = this.ctx, b = this.brani[nome];
+        if (!b.buffer) return;
+        const gia = this.voci[nome];
+        if (gia) {
+            /* stava uscendo: lo si riporta su da dov'e', non si ricomincia il
+               brano. Senza questo, boss-normale-boss in fretta accendeva una
+               seconda copia sovrapposta alla prima. */
+            clearTimeout(gia.chiudi); gia.chiudi = 0;
+            this.rampa(gia.gain.gain, 1, quanto);
+            return;
+        }
+        const src = ctx.createBufferSource(), g = ctx.createGain();
+        src.buffer = b.buffer;
+        src.loop = true;
+        g.gain.value = 0.0001;
+        src.connect(g).connect(this.master);
+        src.start();
+        this.voci[nome] = { src: src, gain: g, chiudi: 0 };
+        this.rampa(g.gain, 1, quanto);
+    },
+
+    spegni(nome, quanto) {
+        const v = this.voci[nome];
+        if (!v || v.chiudi) return;
+        const durata = this.rampa(v.gain.gain, 0, quanto);
+        /* la sorgente si ferma davvero, ma solo a dissolvenza finita: se nel
+           frattempo la scena torna indietro, `accendi` annulla questo
+           appuntamento e la riporta su */
+        v.chiudi = setTimeout(() => {
+            delete this.voci[nome];
+            try { v.src.stop(); } catch (e) {}
+        }, durata * 1000 + 80);
+    },
+
+    /* porta le voci a combaciare con quello che la scena chiede adesso */
+    aggiorna() {
+        if (!this.acceso || !this.ctx) return;
+        const vuole = this.boss ? 'boss' : 'tema';
+        const sistema = () => {
+            this.accendi(vuole, this.INCROCIO);
+            Object.keys(this.voci).forEach(n => {
+                if (n !== vuole) this.spegni(n, this.INCROCIO);
+            });
+        };
+        if (this.brani[vuole].buffer) return sistema();
+        this.carica(vuole).then(buf => {
+            /* nel frattempo la scena puo' essere gia' cambiata, o la partita
+               finita: allora questo brano non lo vuole piu' nessuno */
+            if (!buf || !this.acceso || this.boss !== (vuole === 'boss')) return;
+            sistema();
+        });
     },
 
     start() {
         if (!this.on || FAST) return;
         const ctx = Sfx.ensure();
         if (!ctx) return;
-        if (this.ctx !== ctx) { this.ctx = ctx; this.master = null; this.pad = null; }
+        if (this.ctx !== ctx) { this.ctx = ctx; this.master = null; this.voci = {}; }
         if (!this.master) {
             this.master = ctx.createGain();
             this.master.gain.value = 0;
             this.master.connect(ctx.destination);
-            this.tappeto();
         }
-        this.master.gain.cancelScheduledValues(ctx.currentTime);
-        this.master.gain.setTargetAtTime(1, ctx.currentTime, 1.4);   /* entra piano */
-        if (!this.timer) {
-            this.prossimo = ctx.currentTime + 0.12;
-            this.timer = setInterval(() => { try { this.pump(); } catch (e) { this.stop(); } }, 60);
-        }
+        this.acceso = true;
+        const p = this.master.gain, t = ctx.currentTime;
+        if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(t); else p.cancelScheduledValues(t);
+        p.setTargetAtTime(1, t, 0.7);                                /* entra piano */
+        this.aggiorna();
+        /* il boss scende in sottofondo appena il tema e' a posto, cosi' all'onda
+           10 e' gia' li'. Chi risparmia dati se lo prende quando servira'. */
+        if (!risparmioDati()) this.carica('tema').then(() => this.carica('boss'));
     },
 
     stop(subito) {
-        if (this.master && this.ctx) {
-            this.master.gain.cancelScheduledValues(this.ctx.currentTime);
-            this.master.gain.setTargetAtTime(0, this.ctx.currentTime, subito ? 0.04 : 0.5);
-        }
-        clearInterval(this.timer);
-        this.timer = null;
+        this.acceso = false;
+        if (!this.ctx || !this.master) return;
+        const t = this.ctx.currentTime, quanto = subito ? 0.08 : 0.6;
+        const p = this.master.gain;
+        if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(t); else p.cancelScheduledValues(t);
+        p.setTargetAtTime(0, t, quanto / 3);
+        /* le sorgenti si fermano davvero: col telefono in tasca non deve
+           restare un decodificatore acceso a masticare */
+        Object.keys(this.voci).forEach(n => {
+            const v = this.voci[n];
+            clearTimeout(v.chiudi);
+            delete this.voci[n];
+            try { v.src.stop(t + quanto + 0.15); } catch (e) {}
+        });
     },
 
-    /* cambia colore e passo: la tonica scivola, non salta */
+    /* L'elemento del mostro non cambia piu' la musica: con brani veri
+       cambierebbe brano, e sarebbe un continuo entra-ed-esci. Resta il salto
+       di intensita' sui boss, che era la cosa che si sentiva. */
     scena(element, boss) {
-        this.root = this.RADICE[element] || this.root;
-        this.boss = !!boss;
-        if (this.pad && this.ctx) {
-            const t = this.ctx.currentTime;
-            this.pad.voci.forEach((o, i) => {
-                o.frequency.setTargetAtTime(this.root * (i ? 1.5 : 1) / 2, t, 0.9);
-            });
-        }
+        boss = !!boss;
+        if (boss === this.boss) return;
+        this.boss = boss;
+        this.aggiorna();
     },
 
     toggle() {
@@ -454,8 +484,12 @@ const Music = {
 
 /* col telefono in tasca la musica non deve continuare a suonare */
 document.addEventListener('visibilitychange', () => {
-    if (document.hidden) Music.stop(true);
-    else if (Music.timer === null && Music.master) Music.start();
+    if (document.hidden) {
+        if (Music.acceso) { Music.sospesa = true; Music.stop(true); }
+    } else if (Music.sospesa) {
+        Music.sospesa = false;
+        Music.start();
+    }
 });
 
 /* ==================================================================== gioco */
@@ -1669,7 +1703,7 @@ function boot() {
             document.body.classList.add('capacitor');
         }
         window.__elFx = Particles;   /* esposto per il banco di prova */
-        window.__elMusic = Music;    /* idem: `_musica.html` la fa rendere offline */
+        window.__elMusic = Music;    /* idem: `_musica.html` collauda i due brani */
         window.__el = new Game();
     } catch (err) {
         console.error(err);
