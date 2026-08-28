@@ -874,14 +874,19 @@ class Game {
         if (this.totalAttacks() === 0) this.gameOver();
     }
 
-    /* Sotto quanti attacchi di UN tipo la luce interviene. */
-    lightSoglia() { return D.BAL.lightRefundMax; }
+    /* Sotto quanti attacchi di UN tipo la luce interviene. Cresce con l'onda:
+       una scorta che a onda 8 e' abbondanza, a onda 80 e' fame. */
+    lightSoglia() { return Math.floor(this.wave / D.BAL.lightRefundDiv); }
 
     /* Vero se il prossimo colpo di luce rendera' un attacco: guarda soltanto il
        tipo di cui si ha di meno, che e' anche quello che verrebbe rimborsato.
        Spendere luce non cambia quel conto (la luce non e' mai il bersaglio),
        quindi quello che dice il pulsante e' quello che succede. */
-    lightArmata() { return (this.attacks[this.lightBersaglio()] || 0) < this.lightSoglia(); }
+    lightArmata() {
+        if ((this.attacks[this.lightBersaglio()] || 0) >= this.lightSoglia()) return false;
+        const div = D.BAL.lightRefundTotal;
+        return !div || this.totalAttacks() < Math.floor(this.wave / div);
+    }
 
     /* Il tipo di cui si e' piu' poveri, fra quelli diversi dalla luce. A parita'
        vince il primo nell'ordine degli elementi: deve essere prevedibile, non

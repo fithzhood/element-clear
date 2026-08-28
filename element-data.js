@@ -72,11 +72,21 @@ const BAL = {
        si autoalimentava, e chi partiva bene non si fermava piu'.
 
        Adesso guarda una cosa sola: **il tipo di cui si ha di meno**. Se ne
-       restano meno di `lightRefundMax`, la luce ne rende uno; se anche il piu'
-       scarso e' rifornito, non rende niente. Rattoppa i buchi, non riempie la
-       dispensa — e la regola si legge in una riga guardando i pulsanti, senza
-       dover sommare la mano. */
-    lightRefundMax: 3,
+       restano meno di `onda / lightRefundDiv`, la luce ne rende uno; se anche
+       il piu' scarso e' rifornito, non rende niente. Rattoppa i buchi, non
+       riempie la dispensa — e la regola si legge guardando i pulsanti, senza
+       dover sommare la mano.
+
+       La soglia e' legata all'onda e non fissa: a onda 8 basta avere due tipi
+       forniti perche' la luce taccia, a onda 80 la stessa scorta e' miseria.
+       Quello che conta non e' quanto hai, ma quanto hai **per l'onda in cui
+       sei**. */
+    lightRefundDiv: 4,
+    /* Secondo lucchetto, spento di serie (0 = non si guarda): oltre al tipo
+       scarso, pretende che anche la **mano intera** stia sotto onda/questo.
+       Serve perche' la sola condizione sul tipo piu' scarso non frena niente —
+       con quattro tipi e pacchetti casuali un buco c'e' quasi sempre. */
+    lightRefundTotal: 0,
 
     nerfedPicks: 2,      /* artefatti da scegliere se il boss arriva senza sfida.
                             Misurato: a 2 la calma del saggio resta un affare
