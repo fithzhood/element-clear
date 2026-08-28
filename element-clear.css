@@ -452,9 +452,15 @@ button { font: inherit; color: inherit; border: 0; padding: 0; background: none;
     display: flex; align-items: center; justify-content: center; padding: 16px;
     background: rgba(3, 4, 10, .78); backdrop-filter: blur(8px);
     animation: fade 200ms ease-out;
+    /* il boss disarmato offre sei carte: su uno schermo corto non ci stanno,
+       e senza scorrimento l'ultima resterebbe irraggiungibile */
+    overflow-y: auto;
 }
 @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
-.overlay-box { width: min(420px, 100%); display: flex; flex-direction: column; gap: 12px; }
+/* `margin: auto` e non solo `align-items: center`: centrando con la sola
+   flexbox, quando il contenuto e' piu' alto dello schermo il bordo di sopra
+   finisce fuori e non lo si raggiunge piu' scorrendo */
+.overlay-box { width: min(420px, 100%); margin: auto; display: flex; flex-direction: column; gap: 12px; }
 .overlay-box.narrow { max-width: 300px; text-align: center; }
 .overlay-box h2 {
     margin: 0; text-align: center; font-size: .82rem; font-weight: 800;

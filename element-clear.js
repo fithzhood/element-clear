@@ -385,6 +385,7 @@ class Game {
                 questFailed: this.questFailed,
                 qs: this.qs,
                 challenge: this.challenge ? { type: this.challenge.type, reflected: this.challenge.reflected || 0 } : null,
+                bossNerfed: !!this.bossNerfed,
                 phase: this.phase
             }));
         } catch (e) { /* quota piena: si continua senza salvare */ }
@@ -435,6 +436,7 @@ class Game {
         this.endless     = !!s.endless;
         this.skipChallenge = !!s.skipChallenge;
         this.questFailed = !!s.questFailed;
+        this.bossNerfed  = !!s.bossNerfed;
         this.qs          = s.qs || this.freshQuestState();
 
         const maxHp = s.enemy.maxHp;
@@ -517,6 +519,7 @@ class Game {
     pickQuestOrChallenge() {
         this.quest = null;
         this.challenge = null;
+        this.bossNerfed = false;
 
         if (!this.enemy.boss) {
             const pool = D.QUESTS.filter(q => q.avail(this));
@@ -526,6 +529,8 @@ class Game {
 
         if (this.skipChallenge) {
             this.skipChallenge = false;
+            /* boss arrivato disarmato: paghera' il doppio */
+            this.bossNerfed = true;
             this.toast("The sage's calm holds. No challenge.");
             return;
         }
@@ -556,7 +561,7 @@ class Game {
 
         if (c.type === 'halfElementAttacks') {
             const e = this.enemy.element;
-            const lost = Math.floor((this.attacks[e] || 0) / 2);
+            const lost = Math.floor((this.attacks[e] || 0) / D.BAL.chDevour);
             if (lost > 0) {
                 this.attacks[e] -= lost;
                 this.floatOnButton(e, -lost);
@@ -569,7 +574,7 @@ class Game {
             ELEMENTS.forEach(e => { if (this.attacks[e] > maxAmount) { maxAmount = this.attacks[e]; maxType = e; } });
             const target = this.resistedBy(this.enemy.element);
             if (maxType && target && maxType !== target) {
-                const n = Math.min(maxAmount, 3);
+                const n = Math.min(maxAmount, D.BAL.chConvert);
                 this.attacks[maxType] -= n;
                 this.attacks[target]  += n;
                 this.floatOnButton(maxType, -n);
@@ -591,6 +596,8 @@ class Game {
         const noSuper = !!(this.challenge && this.challenge.type === 'noEffectiveDamage');
         let d = D.baseDamage(element, this.enemy.element, chained, noSuper);
         this.artifacts.forEach(a => { if (a.bonus && a.bonus[element]) d += a.bonus[element]; });
+        /* la corazza elementale non toglie solo il super: smorza ogni colpo */
+        if (noSuper) d = Math.max(1, d - D.BAL.chArmor);
         return d;
     }
 
@@ -633,7 +640,7 @@ class Game {
         /* aura riflettente del boss */
         if (this.challenge && this.challenge.type === 'reflectiveAura') {
             this.challenge.reflected = (this.challenge.reflected || 0) + dmg;
-            if (this.challenge.reflected >= 8) {
+            if (this.challenge.reflected >= D.BAL.chReflect) {
                 this.challenge.reflected = 0;
                 const pool = ELEMENTS.filter(e => this.attacks[e] > 0);
                 if (pool.length) {
@@ -755,7 +762,9 @@ class Game {
             wave: this.wave, boss: !!this.enemy.boss,
             quest: this.quest ? { title: this.quest.title, desc: this.quest.desc,
                                   fatta: this.questIsComplete(), premi: [] } : null,
-            sfida: this.challenge ? { title: this.challenge.title } : null,
+            sfida: this.challenge ? { title: this.challenge.title }
+                 : (this.enemy.boss && this.bossNerfed
+                     ? { title: "The sage's calm held", saltata: true } : null),
             scudi: []
         };
         if (resoconto.quest && resoconto.quest.fatta) resoconto.quest.premi = this.grantQuestReward();
@@ -829,7 +838,7 @@ class Game {
             const b = blocco('ok');
             const testa = el('div', 'rep-head');
             testa.appendChild(el('span', 'rep-kind', 'Boss challenge'));
-            testa.appendChild(el('span', 'rep-stamp', 'survived'));
+            testa.appendChild(el('span', 'rep-stamp', r.sfida.saltata ? 'skipped' : 'survived'));
             b.appendChild(testa);
             b.appendChild(el('div', 'rep-title', r.sfida.title));
         }
@@ -1026,14 +1035,28 @@ class Game {
         return this.attendiTocco(this.dom.mystery, this.dom.mysteryGo);
     }
 
-    showArtifacts() {
+    showArtifacts(rimaste) {
         this.phase = 'artifact';
         this.renderNextPanel(false);
-        const pool = D.ARTIFACTS.slice();
-        const picks = [];
-        for (let i = 0; i < 4 && pool.length; i++) picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
 
-        this.dom.rewardTtl.textContent = 'The boss falls — claim an artifact';
+        let picks = rimaste;
+        if (!picks) {
+            /* un boss arrivato senza sfida paga di piu': e' quello che rende
+               sensato spendere una scelta per la calma del saggio */
+            this.artifactPicks = this.bossNerfed ? D.BAL.nerfedPicks : 1;
+            /* e si offrono carte in piu', se no all'ultima scelta non si
+               sceglie piu' niente: si prende quello che avanza */
+            const quante = 4 + Math.max(0, this.artifactPicks - 1);
+            const pool = D.ARTIFACTS.slice();
+            picks = [];
+            for (let i = 0; i < quante && pool.length; i++) picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+        }
+        this.artifactOffer = picks;
+
+        this.dom.rewardTtl.textContent =
+            this.artifactPicks > 1 ? 'The boss falls unarmed — claim ' + this.artifactPicks + ' artifacts'
+                                   : (rimaste ? 'One more artifact'
+                                              : 'The boss falls — claim an artifact');
         this.dom.rewardIn.innerHTML = '';
         this.dom.rewardIn.className = 'artifacts';
 
@@ -1059,6 +1082,18 @@ class Game {
         if (this.busy) return;
         this.busy = true;
         Sfx.tap();
+
+        /* boss disarmato: si sceglie piu' di una volta, e fra una scelta e
+           l'altra il pannello resta aperto con le carte rimaste */
+        this.artifactPicks = (this.artifactPicks || 1) - 1;
+        if (this.artifactPicks > 0) {
+            this.claimArtifact(a);
+            this.renderShelf();
+            this.busy = false;
+            this.showArtifacts(this.artifactOffer.filter(x => x !== a));
+            return;
+        }
+
         this.dom.reward.hidden = true;
 
         /* bottino del boss: senza, l'onda del boss e' l'unica che non paga nulla */
@@ -1068,6 +1103,15 @@ class Game {
             if (Object.keys(spoils).length) Sfx.gain();
         }
 
+        this.claimArtifact(a);
+
+        this.busy = false;
+        this.nextWave();
+    }
+
+    /* Effetto di un artefatto raccolto: benedizione subito, arma o scudo nello
+       scaffale (con la dotazione, se e' un'arma). */
+    claimArtifact(a) {
         if (a.slot === 'blessing') {
             if (a.grant)         { ELEMENTS.forEach(e => { this.attacks[e] += a.grant; this.floatOnButton(e, +a.grant); }); Sfx.gain(); }
             if (a.skipChallenge) { this.skipChallenge = true; this.toast('The next boss challenge will not bite'); }
@@ -1083,9 +1127,6 @@ class Game {
             }
             this.toast('Artifact claimed — ' + a.name);
         }
-
-        this.busy = false;
-        this.nextWave();
     }
 
     nextWave() {

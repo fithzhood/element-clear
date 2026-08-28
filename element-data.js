@@ -49,7 +49,23 @@ const BAL = {
        la rendita e la spada l'anticipo che salva la corsa. */
     weapon1:     3,      /* danno in piu' di un'arma a un elemento solo            */
     weapon2:     2,      /* ...e di una a due elementi, per ciascuno dei due       */
-    weaponGrant: 6       /* attacchi del suo tipo regalati quando la si raccoglie  */
+    weaponGrant: 6,      /* attacchi del suo tipo regalati quando la si raccoglie  */
+
+    /* Benedizioni. La prosperita' e' un anticipo secco senza coda: dopo che le
+       spade hanno preso la loro dotazione era diventata la carta piu' debole
+       del mazzo, per questo paga 4 per tipo e non 3. */
+    blessingGrant: 4,    /* attacchi per ogni tipo dati dalla prosperita'          */
+
+    /* Sfide dei boss. Piu' mordono, piu' ha senso spendere una scelta per la
+       calma del saggio, che le annulla; e il boss disarmato paga il doppio. */
+    chDevour:    2,      /* Devouring Aura: divisore (2 = meta', 1 = tutti)       */
+    chConvert:   5,      /* Conversion Aura: quanti attacchi converte              */
+    chReflect:   5,      /* Reflective Aura: danno per ogni attacco perso          */
+    chArmor:     1,      /* Elemental Armor: danno tolto in piu' a ogni colpo      */
+    nerfedPicks: 3       /* artefatti da scegliere se il boss arriva senza sfida.
+                            Misurato: a 2 la calma del saggio resta un affare
+                            mediocre (25% contro 28%), a 3 va in pari, a 4
+                            diventa la carta obbligata (39%). */
 };
 
 /* ------------------------------------------------------------------ mostri */
@@ -289,6 +305,27 @@ ARTIFACTS.push({
    nella tabella: il banco di prova cambia le manopole a gioco gia' caricato e
    deve poter richiamare applyBal() per rimettere tutto in riga. */
 function applyBal() {
+    /* la prosperita' ancestrale: quanto da' e cosa dice */
+    const prosp = ARTIFACTS.find(a => a.id === 'b1');
+    if (prosp) {
+        prosp.grant = BAL.blessingGrant;
+        prosp.desc = 'Immediately gain ' + BAL.blessingGrant + ' attacks of each type';
+    }
+
+    /* le sfide dei boss: la descrizione segue i numeri, non li ripete a mano */
+    const QUANTO = { 1: 'all your', 2: 'half of your', 3: 'a third of your', 4: 'a quarter of your' };
+    CHALLENGES.forEach(c => {
+        if (c.type === 'halfElementAttacks')
+            c.desc = 'You lose ' + (QUANTO[BAL.chDevour] || 'some of your') + ' $ELEMENT attacks';
+        if (c.type === 'conversionAura')
+            c.desc = BAL.chConvert + ' of your most abundant attacks turn into the type the boss resists';
+        if (c.type === 'reflectiveAura')
+            c.desc = 'Every ' + BAL.chReflect + ' damage dealt, you lose a random attack';
+        if (c.type === 'noEffectiveDamage')
+            c.desc = 'The boss ignores super effective damage' +
+                     (BAL.chArmor > 0 ? ' and shrugs off ' + BAL.chArmor + ' from every hit' : '');
+    });
+
     ARTIFACTS.forEach(a => {
         if (a.slot !== 'weapon') return;
         const n = a.els.length === 1 ? BAL.weapon1 : BAL.weapon2;
