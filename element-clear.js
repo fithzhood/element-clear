@@ -291,6 +291,173 @@ const Particles = {
     }
 };
 
+/* ---------------------------------------------------------------- musica
+
+   Sottofondo sintetizzato, come gli effetti: nessun file da scaricare, quindi
+   funziona anche dentro l'APK senza rete.
+
+   Tre voci sole: un tappeto tenuto grave, un arpeggio rado e un basso sui
+   tempi forti. Le note stanno su una **pentatonica minore**, che non stona mai
+   con se stessa: e' quello che rende ascoltabile per un'ora un accompagnamento
+   generato a caso. La tonica segue l'elemento del mostro in scena, cosi' la
+   musica cambia colore senza cambiare brano.
+
+   Sui boss il passo va da 70 a 104 battute al minuto, il basso batte su ogni
+   tempo invece che su due, e compare un'eco a meta' tempo: accelera senza
+   diventare un'altra cosa.
+
+   `passo(t, n)` prende il tempo come argomento e non legge l'orologio: cosi'
+   la stessa funzione si puo' far rendere a un OfflineAudioContext per
+   riascoltare il risultato fuori dal gioco (vedi `_musica.html`). */
+const Music = {
+    ctx: null, master: null, pad: null, timer: null,
+    on: localStorage.getItem('elementBattle.music') !== 'off',
+    boss: false,
+    root: 146.83,
+    prossimo: 0, battuta: 0,
+
+    /* gradi della pentatonica minore, in semitoni */
+    SCALA:  [0, 3, 5, 7, 10],
+    RADICE: { fire: 146.83, water: 110.00, nature: 98.00, light: 130.81, darkness: 82.41 },
+    BPM:    { calmo: 70, boss: 104 },
+    /* -1 = pausa. Le pause contano quanto le note: un arpeggio fitto stanca. */
+    ARPA_CALMA: [5, -1, 7, 8, -1, 6, 9, 7],
+    ARPA_BOSS:  [5,  7, 5, 8,  6, 9, 6, 10],
+
+    nota(grado) {
+        const ott = Math.floor(grado / 5);
+        const i = ((grado % 5) + 5) % 5;
+        return this.root * Math.pow(2, ott + this.SCALA[i] / 12);
+    },
+    durata() { return 60 / (this.boss ? this.BPM.boss : this.BPM.calmo); },
+
+    pizzico(t, freq, gain) {
+        const ctx = this.ctx;
+        const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(freq, t);
+        f.type = 'lowpass';
+        f.frequency.setValueAtTime(1600, t);
+        f.frequency.exponentialRampToValueAtTime(600, t + 0.6);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(gain, t + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.95);
+        o.connect(f).connect(g).connect(this.master);
+        o.start(t); o.stop(t + 1);
+    },
+
+    basso(t, freq, gain) {
+        const ctx = this.ctx;
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(gain, t + 0.04);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+        o.connect(g).connect(this.master);
+        o.start(t); o.stop(t + 0.65);
+    },
+
+    /* il tappeto: due voci gravi appena scordate fra loro, sotto un filtro che
+       si apre e si chiude da solo ogni venti secondi */
+    tappeto() {
+        const ctx = this.ctx;
+        const g = ctx.createGain(); g.gain.value = 0.055;
+        const f = ctx.createBiquadFilter();
+        f.type = 'lowpass'; f.frequency.value = 480; f.Q.value = 0.6;
+        const lfo = ctx.createOscillator(), lg = ctx.createGain();
+        lfo.frequency.value = 0.05; lg.gain.value = 200;
+        lfo.connect(lg).connect(f.frequency);
+        lfo.start(0);
+        const voci = [1, 1.5].map((r, i) => {
+            const o = ctx.createOscillator();
+            o.type = i ? 'sine' : 'triangle';
+            o.frequency.value = this.root * r / 2;
+            o.detune.value = i ? 7 : -7;
+            o.connect(f);
+            o.start(0);
+            return o;
+        });
+        f.connect(g).connect(this.master);
+        this.pad = { voci: voci, lfo: lfo };
+    },
+
+    /* una battuta: l'arpeggio, l'eco dei boss e il basso */
+    passo(t, n) {
+        const i = ((n % 8) + 8) % 8;
+        const grado = (this.boss ? this.ARPA_BOSS : this.ARPA_CALMA)[i];
+        if (grado >= 0) this.pizzico(t, this.nota(grado), this.boss ? 0.05 : 0.038);
+        if (this.boss && (i === 3 || i === 7))
+            this.pizzico(t + this.durata() / 2, this.nota(grado + 2), 0.026);
+        if (this.boss)          this.basso(t, this.root / 2, i === 0 ? 0.07 : 0.042);
+        else if (i === 0 || i === 4) this.basso(t, this.root / 2, 0.05);
+    },
+
+    /* si scrivono in anticipo le battute dei prossimi 300 ms: l'orologio di
+       setInterval non e' abbastanza preciso per la musica, quello audio si' */
+    pump() {
+        const ora = this.ctx.currentTime;
+        if (this.prossimo < ora) this.prossimo = ora + 0.06;
+        while (this.prossimo < ora + 0.3) {
+            this.passo(this.prossimo, this.battuta++);
+            this.prossimo += this.durata();
+        }
+    },
+
+    start() {
+        if (!this.on || FAST) return;
+        const ctx = Sfx.ensure();
+        if (!ctx) return;
+        if (this.ctx !== ctx) { this.ctx = ctx; this.master = null; this.pad = null; }
+        if (!this.master) {
+            this.master = ctx.createGain();
+            this.master.gain.value = 0;
+            this.master.connect(ctx.destination);
+            this.tappeto();
+        }
+        this.master.gain.cancelScheduledValues(ctx.currentTime);
+        this.master.gain.setTargetAtTime(1, ctx.currentTime, 1.4);   /* entra piano */
+        if (!this.timer) {
+            this.prossimo = ctx.currentTime + 0.12;
+            this.timer = setInterval(() => { try { this.pump(); } catch (e) { this.stop(); } }, 60);
+        }
+    },
+
+    stop(subito) {
+        if (this.master && this.ctx) {
+            this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+            this.master.gain.setTargetAtTime(0, this.ctx.currentTime, subito ? 0.04 : 0.5);
+        }
+        clearInterval(this.timer);
+        this.timer = null;
+    },
+
+    /* cambia colore e passo: la tonica scivola, non salta */
+    scena(element, boss) {
+        this.root = this.RADICE[element] || this.root;
+        this.boss = !!boss;
+        if (this.pad && this.ctx) {
+            const t = this.ctx.currentTime;
+            this.pad.voci.forEach((o, i) => {
+                o.frequency.setTargetAtTime(this.root * (i ? 1.5 : 1) / 2, t, 0.9);
+            });
+        }
+    },
+
+    toggle() {
+        this.on = !this.on;
+        localStorage.setItem('elementBattle.music', this.on ? 'on' : 'off');
+        if (this.on) this.start(); else this.stop();
+        return this.on;
+    }
+};
+
+/* col telefono in tasca la musica non deve continuare a suonare */
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) Music.stop(true);
+    else if (Music.timer === null && Music.master) Music.start();
+});
+
 /* ==================================================================== gioco */
 
 class Game {
@@ -329,6 +496,12 @@ class Game {
             reportTtl:    $('#report-title'),
             reportBody:   $('#report-body'),
             reportGo:     $('#btn-report-go'),
+            artshow:      $('#artshow'),
+            artshowKind:  $('#artshow-kind'),
+            artshowArt:   $('#artshow-art'),
+            artshowName:  $('#artshow-name'),
+            artshowDesc:  $('#artshow-desc'),
+            artshowGo:    $('#btn-artshow-go'),
             mystery:      $('#mystery'),
             mysteryMark:  $('#mystery-mark'),
             mysteryName:  $('#mystery-name'),
@@ -336,7 +509,8 @@ class Game {
             mysteryChips: $('#mystery-chips'),
             mysteryGo:    $('#btn-mystery-go'),
             toast:     $('#toast'),
-            sound:     $('#btn-sound')
+            sound:     $('#btn-sound'),
+            music:     $('#btn-music')
         };
 
         Particles.init($('#particles'));
@@ -396,6 +570,7 @@ class Game {
     /* --------------------------------------------------------- avvio/uscita */
 
     showStart() {
+        Music.stop();
         this.dom.start.hidden = false;
         this.dom.game.hidden = true;
         const cont = $('#btn-continue');
@@ -470,6 +645,7 @@ class Game {
         this.dom.game.hidden = false;
         this.phase = 'fight';
         Particles.resize();
+        Music.start();
     }
 
     /* ------------------------------------------------------------- nemico */
@@ -1089,6 +1265,7 @@ class Game {
         if (this.artifactPicks > 0) {
             this.claimArtifact(a);
             this.renderShelf();
+            await this.showArtifactCard(a);
             this.busy = false;
             this.showArtifacts(this.artifactOffer.filter(x => x !== a));
             return;
@@ -1104,9 +1281,38 @@ class Game {
         }
 
         this.claimArtifact(a);
+        await this.showArtifactCard(a);
 
         this.busy = false;
         this.nextWave();
+    }
+
+    /* L'illustrazione dell'artefatto e' grande 320 px e nel gioco si vede solo
+       da 46 nello scaffale: qui la si guarda in faccia una volta, appena presa.
+       Le benedizioni comprese: sono le uniche che nello scaffale non ci finiscono
+       nemmeno, e altrimenti non le si vedrebbe mai. */
+    showArtifactCard(a) {
+        const box = this.dom.artshowArt;
+        box.style.setProperty('--a1', ELEMENT_INFO[a.els[0]].color);
+        box.style.setProperty('--a2', ELEMENT_INFO[a.els[a.els.length - 1]].color);
+        box.innerHTML = '';
+        box.className = a.img ? '' : 'placeholder';
+        if (a.img) {
+            const url = 'img/art/' + a.img + '.webp';
+            box.style.backgroundImage = 'url("' + url + '")';
+            Preload.urge(url);
+        } else {
+            box.style.backgroundImage = 'none';
+            const glyph = el('div', 'thumb-glyph');
+            a.els.slice(0, 2).forEach(e => glyph.appendChild(sigil(e)));
+            box.appendChild(glyph);
+            box.appendChild(el('div', 'thumb-slot', a.slot));
+        }
+        this.dom.artshowKind.textContent = a.slot;
+        this.dom.artshowName.textContent = a.name;
+        this.dom.artshowDesc.textContent = a.desc;
+        Sfx.reward();
+        return this.attendiTocco(this.dom.artshow, this.dom.artshowGo);
     }
 
     /* Effetto di un artefatto raccolto: benedizione subito, arma o scudo nello
@@ -1140,6 +1346,7 @@ class Game {
     /* ------------------------------------------------------------- finale */
 
     showEnding() {
+        Music.stop();
         this.phase = 'ending';
         localStorage.removeItem(SAVE_KEY);
         $('#ending-stats').innerHTML =
@@ -1165,6 +1372,7 @@ class Game {
 
     gameOver() {
         if (this.phase === 'gameover') return;
+        Music.stop();
         this.phase = 'gameover';
         localStorage.removeItem(SAVE_KEY);
         Sfx.over();
@@ -1216,6 +1424,8 @@ class Game {
             if (this.enemy === e) this.dom.art.classList.remove('waiting');
         });
         Preload.urge(auraUrl(e.element));
+
+        Music.scena(e.element, e.boss);
 
         this.dom.name.textContent = e.name;
         this.dom.ribbon.hidden = !e.boss;
@@ -1381,6 +1591,14 @@ class Game {
             this.dom.sound.setAttribute('aria-label', on ? 'Sound on' : 'Sound off');
         };
         this.dom.sound.classList.toggle('muted', !Sfx.on);
+
+        this.dom.music.onclick = () => {
+            Sfx.ensure();
+            const on = Music.toggle();
+            this.dom.music.classList.toggle('muted', !on);
+            this.dom.music.setAttribute('aria-label', on ? 'Music on' : 'Music off');
+        };
+        this.dom.music.classList.toggle('muted', !Music.on);
     }
 
     bindDebugKeys() {
@@ -1451,6 +1669,7 @@ function boot() {
             document.body.classList.add('capacitor');
         }
         window.__elFx = Particles;   /* esposto per il banco di prova */
+        window.__elMusic = Music;    /* idem: `_musica.html` la fa rendere offline */
         window.__el = new Game();
     } catch (err) {
         console.error(err);

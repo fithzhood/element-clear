@@ -148,6 +148,8 @@ button { font: inherit; color: inherit; border: 0; padding: 0; background: none;
 .chip.icon .slash { opacity: 0; }
 .chip.icon.muted .slash { opacity: 1; }
 .chip.icon.muted .wave1, .chip.icon.muted .wave2 { opacity: 0; }
+/* la nota non ha onde da spegnere: si smorza tutta */
+#btn-music.muted .ico { opacity: .4; }
 .chip.ghost { font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; opacity: .8; }
 
 /* ------ arena ------ */
@@ -553,6 +555,35 @@ button { font: inherit; color: inherit; border: 0; padding: 0; background: none;
 .pack-chip b { font-size: .85rem; }
 .pack.mystery { background: linear-gradient(160deg, rgba(163, 133, 245, .3), rgba(56, 182, 240, .14)); }
 .pack-q { font-size: 2.1rem; font-weight: 900; opacity: .85; }
+
+/* ------ l'artefatto raccolto, in grande ------ */
+
+/* Le illustrazioni degli artefatti sono 320x320 e nel gioco si vedono solo da
+   46 px nello scaffale: qui si guardano una volta a grandezza vera. */
+#artshow-art {
+    width: min(272px, 74vw); aspect-ratio: 1; margin: 0 auto;
+    border-radius: 22px; background-size: cover; background-position: center;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .28),
+                0 18px 60px -18px #000,
+                0 0 70px -14px var(--a1, var(--el));
+    animation: artIn 460ms cubic-bezier(.2, 1.3, .4, 1);
+}
+@keyframes artIn {
+    from { opacity: 0; transform: scale(.82) translateY(16px); filter: brightness(2.2) saturate(0); }
+    to   { opacity: 1; transform: none; filter: none; }
+}
+#artshow-art.placeholder {
+    display: grid; place-items: center; gap: 6px;
+    background: linear-gradient(140deg, var(--a1), var(--a2));
+}
+#artshow-art .thumb-glyph { font-size: 46px; }
+#artshow-art .thumb-slot { font-size: .8rem; }
+#artshow-kind {
+    font-size: .6rem; font-weight: 800; letter-spacing: .18em;
+    text-transform: uppercase; opacity: .55;
+}
+#artshow-name { font-size: 1.3rem; font-weight: 800; line-height: 1.15; }
+#artshow-desc { margin: 0; font-size: .86rem; opacity: .7; line-height: 1.4; }
 
 /* ------ cosa c'era dietro il punto interrogativo ------ */
 
