@@ -1003,8 +1003,7 @@ class Game {
 
         /* record: vale anche per i boss (nel vecchio gioco i boss non contavano) */
         const score = this.enemy.maxHp;
-        const key = 'normal';
-        if (score > this.best[key]) { this.best[key] = score; this.saveBest(); this.renderTop(); this.toast('New record: ' + score); }
+        if (score > this.best.normal) { this.best.normal = score; this.saveBest(); this.renderTop(); this.toast('New record: ' + score); }
 
         /* il resoconto va raccolto adesso: fra due righe la quest non c'e' piu' */
         const resoconto = {
@@ -1593,7 +1592,6 @@ class Game {
         this.dom.badge.innerHTML = '';
         this.dom.badge.appendChild(sigil(e.element));
         this.dom.portrait.classList.toggle('defeated', e.hp <= 0);
-
     }
 
     renderHp() {
@@ -1847,5 +1845,4 @@ function boot() {
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
 else boot();
-
 })();
