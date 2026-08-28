@@ -316,12 +316,6 @@ button { font: inherit; color: inherit; border: 0; padding: 0; background: none;
     backdrop-filter: blur(6px);
     overflow: hidden;
 }
-#badge::after {
-    content: ''; position: absolute; inset: auto 0 0 0; height: 3px; width: 0;
-    background: var(--el-glow);
-}
-#badge.charging::after { animation: charge 3s linear forwards; }
-@keyframes charge { to { width: 100%; } }
 
 /* particelle */
 #particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
