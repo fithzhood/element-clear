@@ -16,6 +16,10 @@ const SAVE_KEY = 'elementBattle.save.v2';
    gioco chiede da solo (i brani): senza, un brano sostituito resterebbe nella
    cache della CDN e del telefono. Css e js la ricevono dall'html. */
 const VER = ((document.currentScript && document.currentScript.src || '').match(/\?v=\d+/) || [''])[0];
+/* La versione mostrata e' quella che il gioco ha davvero addosso: si ricava dal
+   `?v=N` con cui e' stato caricato questo file, quindi non puo' divergere da
+   quello che gira. Senza `?v=` (sviluppo in locale) si dichiara `dev`. */
+const VERSIONE = (VER.match(/\d+/) || ['dev'])[0];
 /* Ultima ondata della campagna: PV massimi 100, il boss dell'ultimo livello di illustrazione. */
 const FINAL_WAVE = 91;
 const HS_KEY   = 'elementBattle.best.v2';
@@ -615,6 +619,7 @@ class Game {
         const cont = $('#btn-continue');
         cont.disabled = !this.hasSave();
         $('#start-best').textContent = this.best.normal;
+        $('#start-ver').textContent = 'v' + VERSIONE;
     }
 
     newGame() {
