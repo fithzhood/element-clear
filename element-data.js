@@ -29,8 +29,11 @@ const STRONG_VS = { fire: 'nature', nature: 'water', water: 'fire' };
 const BAL = {
     /* Mano di partenza: cinque per tipo. Luce e buio partivano da zero e li si
        trovava solo nei pacchetti; ora si comincia con tutto il repertorio in
-       mano, e anche le quest che li richiedono sono disponibili dall'onda 1. */
-    start:       { fire: 5, water: 5, nature: 5, light: 5, darkness: 5 },
+       mano, e anche le quest che li richiedono sono disponibili dall'onda 1.
+       Ma non cinque: la luce costa quasi zero (spendi 1, ne torna 1 a caso),
+       e partendo con cinque luci la campagna si chiudeva nel 99% delle
+       partite. Due a testa e' il compromesso. */
+    start:       { fire: 5, water: 5, nature: 5, light: 2, darkness: 2 },
     packDiv:     10,     /* attacchi per pacchetto = PV massimi / packDiv          */
     /* Tetto agli attacchi guadagnati per onda (pacchetti e quest).
        Misurato col bot: portarlo da 6 a 3 non sposta niente, perche' nel finale
