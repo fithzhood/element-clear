@@ -27,7 +27,10 @@ const STRONG_VS = { fire: 'nature', nature: 'water', water: 'fire' };
 /* Manopole del bilanciamento, raccolte qui perche' il banco di prova (_bot.html)
    possa misurarne le varianti senza toccare il motore. */
 const BAL = {
-    start:       { fire: 5, water: 5, nature: 5, light: 0, darkness: 0 },
+    /* Mano di partenza: cinque per tipo. Luce e buio partivano da zero e li si
+       trovava solo nei pacchetti; ora si comincia con tutto il repertorio in
+       mano, e anche le quest che li richiedono sono disponibili dall'onda 1. */
+    start:       { fire: 5, water: 5, nature: 5, light: 5, darkness: 5 },
     packDiv:     10,     /* attacchi per pacchetto = PV massimi / packDiv          */
     /* Tetto agli attacchi guadagnati per onda (pacchetti e quest).
        Misurato col bot: portarlo da 6 a 3 non sposta niente, perche' nel finale
@@ -310,6 +313,14 @@ function applyBal() {
     if (prosp) {
         prosp.grant = BAL.blessingGrant;
         prosp.desc = 'Immediately gain ' + BAL.blessingGrant + ' attacks of each type';
+    }
+
+    /* la calma del saggio: la meta' del suo valore e' il boss disarmato che
+       paga di piu', e se non lo dice la carta nessuno la sceglie */
+    const calma = ARTIFACTS.find(a => a.id === 'b2');
+    if (calma) {
+        calma.desc = 'The next boss challenge has no effect · that boss pays ' +
+                     BAL.nerfedPicks + ' artifacts instead of 1';
     }
 
     /* le sfide dei boss: la descrizione segue i numeri, non li ripete a mano */
