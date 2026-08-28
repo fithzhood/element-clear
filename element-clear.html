@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>Element Battle</title>
 <link rel="icon" href="Element.png">
-<link rel="stylesheet" href="element-clear.css?v=4">
+<link rel="stylesheet" href="element-clear.css?v=5">
 </head>
 <body>
 
@@ -121,6 +121,27 @@
     </div>
   </div>
 
+  <!-- ------------------------------------------------- resoconto dell'onda -->
+  <div id="report" class="overlay" hidden>
+    <div class="overlay-box">
+      <h2 id="report-title">Wave cleared</h2>
+      <div id="report-body"></div>
+      <button id="btn-report-go" class="big-btn primary">Claim your spoils</button>
+    </div>
+  </div>
+
+  <!-- ------------------------------- cosa c'era dietro il punto interrogativo -->
+  <div id="mystery" class="overlay" hidden>
+    <div class="overlay-box narrow">
+      <h2>Mystery pack</h2>
+      <div id="mystery-mark"></div>
+      <div id="mystery-name"></div>
+      <p id="mystery-desc"></p>
+      <div id="mystery-chips"></div>
+      <button id="btn-mystery-go" class="big-btn primary">Take it</button>
+    </div>
+  </div>
+
   <div id="ending" class="overlay" hidden>
     <div class="overlay-box narrow ending-box">
       <div class="ending-crest"><img src="Element.png" alt=""></div>
@@ -148,7 +169,7 @@
   <div id="toast"></div>
 </div>
 
-<script src="element-data.js?v=4"></script>
-<script src="element-clear.js?v=4"></script>
+<script src="element-data.js?v=5"></script>
+<script src="element-clear.js?v=5"></script>
 </body>
 </html>

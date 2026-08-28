@@ -18,7 +18,10 @@ html, body {
 body { user-select: none; -webkit-user-select: none; }
 input, textarea { user-select: text; -webkit-user-select: text; }
 
-button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+/* `padding: 0` non e' pignoleria: senza, il browser lascia il suo 1px 6px e ogni
+   bottone quadrato (i badge dello scaffale, lo stemma) schiaccia dentro un
+   rettangolo 34x44 quello che contiene. */
+button { font: inherit; color: inherit; border: 0; padding: 0; background: none; cursor: pointer; }
 
 /* diverse regole qui sotto impostano display: senza questa, [hidden] non nasconde */
 [hidden] { display: none !important; }
@@ -209,7 +212,12 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 }
 @keyframes idle { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
 
-#portrait-art { position: absolute; inset: 0; background-size: cover; background-position: center; }
+#portrait-art {
+    position: absolute; inset: 0; background-size: cover; background-position: center;
+    transition: opacity 240ms ease;
+}
+/* figura non ancora scesa tutta: si tiene spenta invece di mostrarla a fasce */
+#portrait-art.waiting { opacity: 0; }
 #portrait-frame {
     position: absolute; inset: 0; pointer-events: none; border-radius: 22px;
     background:
@@ -251,8 +259,21 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
             inset 0 0 0 3px rgba(255, 225, 165, .95),
             0 0 0 1px #000,
             0 18px 50px -12px rgba(0, 0, 0, .95),
+            0 0 10px 1px rgba(255, 255, 255, .38),
             0 0 96px 4px var(--el);
     }
+}
+
+/* I colori del boss respirano, come nel gioco del 2025: li' era
+   `bossBorderPulse`, brightness da 1 a 1.4 con un alone bianco sul bordo.
+   Stesso effetto, ma sul tempo dell'aura (2,8s invece di 2s) perche' due
+   battiti scompagnati si guardano male. */
+#app.boss #portrait-art { animation: bossColors 2.8s ease-in-out infinite; }
+/* boss abbattuto: si ferma, altrimenti il cadavere continua a pulsare */
+#app.boss #portrait.defeated #portrait-art { animation: none; }
+@keyframes bossColors {
+    0%, 100% { filter: brightness(1) saturate(1); }
+    50%      { filter: brightness(1.4) saturate(1.28); }
 }
 
 /* corona di energia che gira dietro al ritratto */
@@ -527,15 +548,63 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .pack.mystery { background: linear-gradient(160deg, rgba(163, 133, 245, .3), rgba(56, 182, 240, .14)); }
 .pack-q { font-size: 2.1rem; font-weight: 900; opacity: .85; }
 
-.mystery-reveal {
-    position: absolute; inset: 0; display: grid; place-items: center;
-    font-size: 2.2rem; font-weight: 900; border-radius: 16px;
-    background: rgba(4, 6, 14, .82);
-    animation: popIn 260ms cubic-bezier(.2, 1.5, .4, 1);
+/* ------ cosa c'era dietro il punto interrogativo ------ */
+
+#mystery-mark {
+    font-size: 3.4rem; font-weight: 900; line-height: 1;
+    animation: popIn 320ms cubic-bezier(.2, 1.5, .4, 1);
 }
-.mystery-reveal.bad { color: #ff6b6b } .mystery-reveal.warn { color: #ff9f43 }
-.mystery-reveal.ok { color: #cfd6e6 } .mystery-reveal.good { color: #6ce67a }
-.mystery-reveal.great { color: #57c7ff }
+#mystery-mark.bad { color: #ff6b6b } #mystery-mark.warn { color: #ff9f43 }
+#mystery-mark.ok  { color: #cfd6e6 } #mystery-mark.good { color: #6ce67a }
+#mystery-mark.great { color: #57c7ff }
+#mystery-name { font-size: 1.25rem; font-weight: 800; }
+#mystery-desc { margin: 0; font-size: .84rem; opacity: .66; line-height: 1.4; }
+#mystery-chips { display: flex; justify-content: center; }
+#mystery-chips .rep-chips { margin: 0; }
+
+/* ------ resoconto dell'onda ------ */
+
+#report-body { display: flex; flex-direction: column; gap: 9px; }
+.rep-block {
+    border-radius: 14px; padding: 10px 12px;
+    background: var(--panel); backdrop-filter: blur(10px);
+    box-shadow: inset 0 0 0 1px var(--line);
+    animation: popIn 320ms cubic-bezier(.2, 1.4, .4, 1) backwards;
+}
+.rep-block.ok { box-shadow: inset 0 0 0 1px rgba(108, 230, 122, .38); }
+.rep-block.ko { box-shadow: inset 0 0 0 1px rgba(255, 107, 107, .38); }
+.rep-head { display: flex; align-items: center; gap: 8px; }
+.rep-kind {
+    font-size: .6rem; font-weight: 800; letter-spacing: .16em;
+    text-transform: uppercase; opacity: .58;
+}
+.rep-stamp {
+    margin-left: auto; font-size: .64rem; font-weight: 900; letter-spacing: .12em;
+    text-transform: uppercase; padding: 3px 9px; border-radius: 999px;
+}
+.rep-block.ok .rep-stamp { color: #6ce67a; box-shadow: inset 0 0 0 1px rgba(108, 230, 122, .55); }
+.rep-block.ko .rep-stamp { color: #ff6b6b; box-shadow: inset 0 0 0 1px rgba(255, 107, 107, .55); }
+.rep-title { font-size: 1.02rem; font-weight: 800; margin-top: 3px; }
+.rep-desc { font-size: .76rem; opacity: .6; line-height: 1.3; margin-top: 1px; }
+.rep-line {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 8px; padding-top: 8px; box-shadow: inset 0 1px 0 var(--line);
+}
+.rep-lbl {
+    font-size: .6rem; font-weight: 800; letter-spacing: .14em;
+    text-transform: uppercase; opacity: .55;
+}
+.rep-chips { display: flex; flex-wrap: wrap; gap: 4px 9px; margin-left: auto; }
+.rep-chip { display: flex; align-items: center; gap: 3px; font-size: 1.05rem; font-weight: 800; }
+.rep-chip b { font-size: .9rem; }
+.rep-none { margin-left: auto; font-size: .8rem; opacity: .5; font-style: italic; }
+.rep-shield { display: flex; align-items: center; gap: 9px; margin-top: 8px; }
+.rep-shield .thumb {
+    width: 34px; height: 34px; flex: 0 0 auto; border-radius: 9px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22);
+}
+.rep-shield-name { font-size: .82rem; font-weight: 700; }
+#btn-report-go { margin-top: 2px; }
 
 /* artefatti */
 .artifacts { display: flex; flex-direction: column; gap: 8px; }

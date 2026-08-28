@@ -31,6 +31,119 @@ const rand  = arr => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const sleep = n => new Promise(r => setTimeout(r, ms(n)));
 
+/* ------------------------------------------------------ precarico immagini
+
+   Le figure dei mostri pesano una cinquantina di KB l'una e stanno su un
+   dominio remoto (anche l'APK carica il sito, non se le porta dentro):
+   chiederle nell'istante in cui il mostro entra in scena vuol dire vederle
+   comparire a fasce, come uno scaricamento lento di trent'anni fa.
+
+   Qui si prendono in anticipo, su tre livelli:
+     - quello che serve adesso mette in pausa il sottofondo finche' non e' suo;
+     - chi arriva dopo e' gia' deciso un'onda prima, e scavalca la coda;
+     - tutto il resto dell'archivio scende in sottofondo mentre si gioca, due
+       per volta e a bassa priorita'.
+
+   Gli oggetti Image restano nella mappa apposta: finche' sono vivi il browser
+   tiene in memoria anche il bitmap gia' decodificato, e lo scambio e'
+   istantaneo pure la seconda volta che si incontra lo stesso mostro. */
+const Preload = {
+    cache:   new Map(),      /* url -> { img, done, fatto } */
+    coda:    [],
+    aperte:  0,
+    urgenti: 0,
+    MAX:     2,
+
+    /* Vera solo quando l'immagine e' scesa TUTTA: a meta' non si mostra. */
+    ready(url) { const v = this.cache.get(url); return !!(v && v.fatto); },
+
+    /* Serve adesso: parte davanti a tutti e ferma il sottofondo. */
+    urge(url) {
+        if (this.ready(url)) return this.cache.get(url).done;
+        this.urgenti++;
+        const done = this.start(url, 'high');
+        done.then(() => { this.urgenti--; this.pump(); });
+        return done;
+    },
+
+    /* Servira' piu' avanti: in coda. Con `avanti` passa davanti alla coda lunga. */
+    soon(urls, avanti) {
+        const nuovi = [];
+        urls.forEach(url => {
+            if (this.cache.has(url)) return;
+            const i = this.coda.indexOf(url);
+            if (i >= 0) { if (!avanti) return; this.coda.splice(i, 1); }
+            nuovi.push(url);
+        });
+        if (avanti) this.coda.unshift.apply(this.coda, nuovi);
+        else        this.coda.push.apply(this.coda, nuovi);
+        this.pump();
+    },
+
+    start(url, priorita) {
+        const gia = this.cache.get(url);
+        if (gia) return gia.done;
+        const img = new Image();
+        if ('fetchPriority' in img) img.fetchPriority = priorita;
+        const voce = { img: img, fatto: false };
+        voce.done = new Promise(res => {
+            /* anche l'errore chiude la voce: un buco fra le figure non deve
+               lasciare il ritratto spento per sempre */
+            const chiudi = () => { voce.fatto = true; res(img); };
+            /* decode() sposta la decodifica fuori dal disegno: il primo
+               fotogramma con la figura dentro non salta */
+            img.onload  = () => { if (img.decode) img.decode().then(chiudi, chiudi); else chiudi(); };
+            img.onerror = chiudi;
+        });
+        this.cache.set(url, voce);
+        img.src = url;
+        return voce.done;
+    },
+
+    pump() {
+        while (!this.urgenti && this.aperte < this.MAX && this.coda.length) {
+            const url = this.coda.shift();
+            if (this.cache.has(url)) continue;
+            this.aperte++;
+            this.start(url, 'low').then(() => { this.aperte--; this.pump(); });
+        }
+    }
+};
+
+/* Cosa c'era davvero dietro il punto interrogativo, detto rispetto ai pacchetti
+   che si vedevano: senza questo metro, "+1" o "x2" non vogliono dire niente. */
+const MYSTERY_INFO = {
+    skull: { mark: '\u2620', cls: 'bad',   name: 'Empty hands',
+             desc: 'The pack was a trap. Nothing at all.' },
+    '-1':  { mark: '\u22121', cls: 'warn', name: 'Thin pack',
+             desc: 'One attack less than the packs you could see.' },
+    ok:    { mark: '=',  cls: 'ok',    name: 'Fair pack',
+             desc: 'As many attacks as the packs you could see.' },
+    '+1':  { mark: '+1', cls: 'good',  name: 'Rich pack',
+             desc: 'One attack more than the packs you could see.' },
+    x2:    { mark: '\u00d72', cls: 'great', name: 'Double pack',
+             desc: 'Twice the attacks of the packs you could see.' }
+};
+
+const monsterUrl = (element, tier) => 'img/mon/' + element + tier + '.webp';
+const auraUrl    = element => 'img/bg/' + element + '.webp';
+
+/* Tutte le figure, nell'ordine in cui il gioco le incontra: prima le velature
+   di sfondo, poi i mostri livello per livello, infine gli artefatti. */
+function tutteLeFigure() {
+    const lista = ELEMENTS.map(auraUrl);
+    for (let tier = 1; tier <= 10; tier++) ELEMENTS.forEach(e => lista.push(monsterUrl(e, tier)));
+    D.ARTIFACTS.forEach(a => { if (a.img) lista.push('img/art/' + a.img + '.webp'); });
+    return lista;
+}
+
+/* Chi ha chiesto di risparmiare dati non si merita qualche MB non richiesto:
+   gli resta il precarico mirato, che e' una figura per onda. */
+function risparmioDati() {
+    const c = navigator.connection;
+    return !!(c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || '')));
+}
+
 /* --------------------------------------------------------------- suoni */
 
 /* Effetti sonori sintetizzati: nessun file da scaricare. */
@@ -212,6 +325,16 @@ class Game {
             endlessTag: $('#endless-tag'),
             over:      $('#gameover'),
             overText:  $('#gameover-score'),
+            report:       $('#report'),
+            reportTtl:    $('#report-title'),
+            reportBody:   $('#report-body'),
+            reportGo:     $('#btn-report-go'),
+            mystery:      $('#mystery'),
+            mysteryMark:  $('#mystery-mark'),
+            mysteryName:  $('#mystery-name'),
+            mysteryDesc:  $('#mystery-desc'),
+            mysteryChips: $('#mystery-chips'),
+            mysteryGo:    $('#btn-mystery-go'),
             toast:     $('#toast'),
             sound:     $('#btn-sound')
         };
@@ -224,6 +347,13 @@ class Game {
 
         this.bindUi();
         if (DEBUG) this.bindDebugKeys();
+
+        /* Il precarico parte subito: mentre si legge la schermata iniziale
+           scendono le velature e i mostri di primo livello, che sono i primi
+           che si vedranno. Non nel banco di prova, dove sarebbero decine di
+           richieste per partita e non servirebbero a niente. */
+        if (!FAST && !risparmioDati()) Preload.soon(tutteLeFigure());
+
         if (PARAMS.has('auto')) this.newGame(); else this.showStart();
     }
 
@@ -329,6 +459,7 @@ class Game {
         this.enterGame();
         this.phase = 'fight';
         this.renderAll();
+        this.prefetchNext();
         if (this.totalAttacks() === 0 && this.enemy.hp > 0) this.gameOver();
     }
 
@@ -363,10 +494,22 @@ class Game {
 
         this.pickQuestOrChallenge();
         this.renderAll();
+        /* dopo renderAll, non prima: chi e' in scena adesso ha la precedenza
+           sulla figura di chi arrivera' fra un'onda */
+        this.prefetchNext();
         if (this.enemy.boss) { Sfx.boss(); this.dom.portrait.classList.add('boss-enter');
                                setTimeout(() => this.dom.portrait.classList.remove('boss-enter'), 900); }
         this.save();
         if (this.totalAttacks() === 0) this.gameOver();
+    }
+
+    /* Chi arriva dopo e' gia' deciso: la sua figura si scarica adesso, mentre
+       si combatte questa onda, cosi' allo scambio e' gia' in memoria. */
+    prefetchNext() {
+        if (!this.nextElement) return;
+        const pvDopo = 10 + this.wave;      /* il prossimo e' l'onda wave + 1 */
+        Preload.soon([monsterUrl(this.nextElement, D.artTier(pvDopo)),
+                      auraUrl(this.nextElement)], true);
     }
 
     /* -------------------------------------------------- quest e sfide boss */
@@ -579,13 +722,16 @@ class Game {
         if (r.kind === 'halfUsed') gains.push([this.qs.usedType, Math.floor(this.qs.usedCount * 0.5)]);
         if (r.kind === 'counterNext') D.counterOf(this.nextElement).forEach(t => gains.push([t, r.amount]));
 
+        const dati = [];
         gains.forEach(([t, n]) => {
             if (!t || n <= 0) return;
             this.attacks[t] += n;
             this.floatOnButton(t, +n);
+            dati.push([t, n]);
         });
-        if (gains.some(([, n]) => n > 0)) Sfx.reward();
+        if (dati.length) Sfx.reward();
         this.toast('Quest complete — ' + this.quest.title);
+        return dati;   /* serve al resoconto: quanto ha pagato, elemento per elemento */
     }
 
     /* ------------------------------------------------------------ vittoria */
@@ -604,33 +750,121 @@ class Game {
         const key = 'normal';
         if (score > this.best[key]) { this.best[key] = score; this.saveBest(); this.renderTop(); this.toast('New record: ' + score); }
 
-        if (this.questIsComplete()) this.grantQuestReward();
+        /* il resoconto va raccolto adesso: fra due righe la quest non c'e' piu' */
+        const resoconto = {
+            wave: this.wave, boss: !!this.enemy.boss,
+            quest: this.quest ? { title: this.quest.title, desc: this.quest.desc,
+                                  fatta: this.questIsComplete(), premi: [] } : null,
+            sfida: this.challenge ? { title: this.challenge.title } : null,
+            scudi: []
+        };
+        if (resoconto.quest && resoconto.quest.fatta) resoconto.quest.premi = this.grantQuestReward();
         this.quest = null;
         this.renderQuest();
 
         await sleep(650);
         this.busy = false;
 
-        if (this.enemy.boss) {
-            if (D.BAL.bossShields) this.applyShields();
-            this.showArtifacts();
-        } else {
-            this.applyShields();
-            this.showPackages();
-        }
+        if (!this.enemy.boss || D.BAL.bossShields) resoconto.scudi = this.applyShields();
+
+        await this.showReport(resoconto);
+
+        if (this.enemy.boss) this.showArtifacts();
+        else                 this.showPackages();
     }
 
     applyShields() {
         const gained = {};
+        const dettaglio = [];
         this.artifacts.forEach(a => {
             if (!a.regen) return;
+            const premi = [];
             Object.keys(a.regen).forEach(e => {
                 this.attacks[e] += a.regen[e];
                 gained[e] = (gained[e] || 0) + a.regen[e];
+                premi.push([e, a.regen[e]]);
             });
+            dettaglio.push({ artefatto: a, premi: ordinaPremi(premi) });
         });
         Object.keys(gained).forEach(e => this.floatOnButton(e, +gained[e]));
         if (Object.keys(gained).length) { Sfx.gain(); this.renderAttacks(); }
+        return dettaglio;   /* il resoconto elenca scudo per scudo */
+    }
+
+    /* --------------------------------------------------- resoconto dell'onda */
+
+    /* Quello che prima passava come qualche numero volante sui pulsanti — quest
+       riuscita o fallita, cosa ha fruttato, quanti attacchi hanno restituito gli
+       scudi — qui si legge fermo, prima di scegliere il bottino. */
+    showReport(r) {
+        const box = this.dom.reportBody;
+        box.innerHTML = '';
+        let ritardo = 0;
+        const blocco = cls => {
+            const b = el('div', 'rep-block ' + cls);
+            b.style.animationDelay = ritardo + 'ms';
+            ritardo += 70;
+            box.appendChild(b);
+            return b;
+        };
+
+        if (r.quest) {
+            const b = blocco(r.quest.fatta ? 'ok' : 'ko');
+            const testa = el('div', 'rep-head');
+            testa.appendChild(el('span', 'rep-kind', 'Quest'));
+            testa.appendChild(el('span', 'rep-stamp', r.quest.fatta ? 'complete' : 'failed'));
+            b.appendChild(testa);
+            b.appendChild(el('div', 'rep-title', r.quest.title));
+            b.appendChild(el('div', 'rep-desc', r.quest.desc));
+
+            const riga = el('div', 'rep-line');
+            riga.appendChild(el('span', 'rep-lbl', 'Reward'));
+            if (r.quest.premi.length)   riga.appendChild(chipRow(r.quest.premi));
+            else if (r.quest.fatta)     riga.appendChild(el('span', 'rep-none', 'nothing to give'));
+            else                        riga.appendChild(el('span', 'rep-none', 'lost'));
+            b.appendChild(riga);
+        }
+
+        if (r.sfida) {
+            const b = blocco('ok');
+            const testa = el('div', 'rep-head');
+            testa.appendChild(el('span', 'rep-kind', 'Boss challenge'));
+            testa.appendChild(el('span', 'rep-stamp', 'survived'));
+            b.appendChild(testa);
+            b.appendChild(el('div', 'rep-title', r.sfida.title));
+        }
+
+        if (r.scudi.length) {
+            const b = blocco('shields');
+            b.appendChild(el('div', 'rep-kind', 'Shields'));
+            r.scudi.forEach(s => {
+                const riga = el('div', 'rep-shield');
+                riga.appendChild(artifactThumb(s.artefatto, true));
+                riga.appendChild(el('span', 'rep-shield-name', s.artefatto.name));
+                riga.appendChild(chipRow(s.premi));
+                b.appendChild(riga);
+            });
+        }
+
+        /* onda senza quest, senza sfida e senza scudi: non c'e' niente da leggere */
+        if (!box.children.length) return Promise.resolve();
+
+        this.dom.reportTtl.textContent = r.boss ? 'The boss falls' : 'Wave ' + r.wave + ' cleared';
+        this.dom.reportGo.textContent  = r.boss ? 'Claim an artifact' : 'Claim your spoils';
+        this.phase = 'report';
+        Sfx.reward();
+        return this.attendiTocco(this.dom.report, this.dom.reportGo);
+    }
+
+    /* Apre un pannello e aspetta che si tocchi il suo pulsante. Al banco di prova
+       (FAST) non si aspetta: il pannello resta costruito ma non si mostra, cosi'
+       le verifiche possono leggerlo senza che il bot resti piantato. */
+    attendiTocco(pannello, bottone) {
+        if (FAST) return Promise.resolve();
+        pannello.hidden = false;
+        return new Promise(res => {
+            bottone.onclick = () => { pannello.hidden = true; bottone.onclick = null; res(); };
+        });
     }
 
     /* ---------------------------------------------------------- ricompense */
@@ -745,7 +979,7 @@ class Game {
         const q = el('button', 'pack mystery');
         q.style.animationDelay = '180ms';
         q.appendChild(el('div', 'pack-q', '?'));
-        q.onclick = () => this.takePackage(mystery, kind, q);
+        q.onclick = () => this.takePackage(mystery, kind);
         this.dom.rewardIn.appendChild(q);
 
         this.dom.reward.hidden = false;
@@ -757,8 +991,8 @@ class Game {
         this.busy = true;
         Sfx.tap();
 
-        if (mysteryKind) this.revealMystery(mysteryKind, node);
-        await sleep(mysteryKind ? 750 : 120);
+        if (mysteryKind) await this.revealMystery(mysteryKind, pack);
+        else             await sleep(120);
 
         this.dom.reward.hidden = true;
 
@@ -772,12 +1006,24 @@ class Game {
         this.nextWave();
     }
 
-    revealMystery(kind, node) {
-        const label = { skull: '☠', '-1': '-1', ok: '✓', '+1': '+1', x2: 'x2' }[kind];
-        const cls   = { skull: 'bad', '-1': 'warn', ok: 'ok', '+1': 'good', x2: 'great' }[kind];
-        const tag = el('div', 'mystery-reveal ' + cls, label);
-        node.appendChild(tag);
+    /* Il punto interrogativo non deve restare un mistero anche dopo averlo scelto:
+       si dice cosa c'era dentro e quanto vale rispetto ai pacchetti che si
+       vedevano, con gli attacchi elencati uno per uno. */
+    revealMystery(kind, pack) {
+        const info = MYSTERY_INFO[kind] || MYSTERY_INFO.ok;
+        this.dom.mysteryMark.className   = info.cls;
+        this.dom.mysteryMark.textContent = info.mark;
+        this.dom.mysteryName.textContent = info.name;
+        this.dom.mysteryDesc.textContent = info.desc;
+
+        const chips = this.dom.mysteryChips;
+        chips.innerHTML = '';
+        const premi = ordinaPremi(Object.keys(pack).map(e => [e, pack[e]]));
+        if (premi.length) chips.appendChild(chipRow(premi));
+        else              chips.appendChild(el('span', 'rep-none', 'no attacks gained'));
+
         if (kind === 'skull' || kind === '-1') Sfx.loss(); else Sfx.gain();
+        return this.attendiTocco(this.dom.mystery, this.dom.mysteryGo);
     }
 
     showArtifacts() {
@@ -827,6 +1073,14 @@ class Game {
             if (a.skipChallenge) { this.skipChallenge = true; this.toast('The next boss challenge will not bite'); }
         } else {
             this.artifacts.push(a);
+            /* un'arma senza attacchi del suo tipo non serve a niente: se la
+               manopola e' accesa, arriva con la sua dotazione */
+            if (a.slot === 'weapon' && D.BAL.weaponGrant > 0) {
+                const n = a.els.length === 1 ? D.BAL.weaponGrant
+                                             : Math.ceil(D.BAL.weaponGrant / 2);
+                a.els.forEach(e => { this.attacks[e] += n; this.floatOnButton(e, +n); });
+                Sfx.gain();
+            }
             this.toast('Artifact claimed — ' + a.name);
         }
 
@@ -906,10 +1160,21 @@ class Game {
         this.dom.app.dataset.element = e.element;
         this.dom.app.classList.toggle('boss', !!e.boss);
 
-        const url = 'img/mon/' + e.element + e.tier + '.webp';
+        const url = monsterUrl(e.element, e.tier);
         this.dom.art.style.backgroundImage = 'url("' + url + '")';
         this.dom.backdrop.style.backgroundImage = 'url("' + url + '")';
-        this.dom.swirl.style.backgroundImage = 'url("img/bg/' + e.element + '.webp")';
+        this.dom.swirl.style.backgroundImage = 'url("' + auraUrl(e.element) + '")';
+
+        /* Se la figura non e' ancora scesa tutta (prima partita, memoria vuota)
+           il ritratto resta spento e si accende quando l'immagine e' intera:
+           meglio un attimo di buio che vederla arrivare a fasce. Lo sfondo
+           sfocato non ha il problema, e resta com'e'. */
+        const pronta = Preload.ready(url);
+        this.dom.art.classList.toggle('waiting', !pronta);
+        if (!pronta) Preload.urge(url).then(() => {
+            if (this.enemy === e) this.dom.art.classList.remove('waiting');
+        });
+        Preload.urge(auraUrl(e.element));
 
         this.dom.name.textContent = e.name;
         this.dom.ribbon.hidden = !e.boss;
@@ -1102,6 +1367,24 @@ function sigil(element) {
     use.setAttribute('href', '#sig-' + element);
     svg.appendChild(use);
     return svg;
+}
+
+/* Premi sempre nell'ordine dei cinque elementi, non in quello in cui capitano. */
+function ordinaPremi(coppie) {
+    return coppie.filter(([, n]) => n > 0)
+                 .sort((a, b) => ELEMENTS.indexOf(a[0]) - ELEMENTS.indexOf(b[0]));
+}
+
+/* Riga di gettoni "+3 <sigillo>": la stessa lettura dei pacchetti. */
+function chipRow(coppie) {
+    const row = el('div', 'rep-chips');
+    ordinaPremi(coppie).forEach(([e, n]) => {
+        const c = el('span', 'rep-chip ' + e);
+        c.appendChild(el('b', null, '+' + n));
+        c.appendChild(sigil(e));
+        row.appendChild(c);
+    });
+    return row;
 }
 
 /* Miniatura di un artefatto: illustrazione se esiste, altrimenti stemma disegnato. */

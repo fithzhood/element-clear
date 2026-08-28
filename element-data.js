@@ -34,7 +34,22 @@ const BAL = {
        il ritmo lo dettano gli scudi, non i pacchetti. Lasciato aperto. */
     rewardCap:   99,
     bossPack:    true,   /* il boss paga anche il bottino in attacchi              */
-    bossShields: true    /* gli scudi rigenerano anche dopo un boss                */
+    bossShields: true,   /* gli scudi rigenerano anche dopo un boss                */
+
+    /* Manopole delle armi. Misurato col bot il 28 ago 2026: raccogliendo SOLO
+       spade la campagna si chiude nel 4% delle partite, SOLO scudi nel 34%.
+       Le armi allungano gli attacchi, gli scudi te ne danno di nuovi, e la
+       partita finisce quando gli attacchi finiscono: per questo non c'e'
+       partita.
+
+       Alzare il solo danno NON serve: a +4 e a +6 la campagna resta al 4-5%,
+       misurato due volte. Quello che sposta e' la dotazione, perche' paga nella
+       valuta giusta. Con +3 e dotazione 6 le spade da sole chiudono il 25%:
+       una scelta vera, ancora un filo sotto agli scudi. Cosi' lo scudo resta
+       la rendita e la spada l'anticipo che salva la corsa. */
+    weapon1:     3,      /* danno in piu' di un'arma a un elemento solo            */
+    weapon2:     2,      /* ...e di una a due elementi, per ciascuno dei due       */
+    weaponGrant: 6       /* attacchi del suo tipo regalati quando la si raccoglie  */
 };
 
 /* ------------------------------------------------------------------ mostri */
@@ -270,6 +285,27 @@ ARTIFACTS.push({
     els: ['light'], skipChallenge: true
 });
 
+/* Bonus e descrizione delle armi si ricavano da BAL, non si scrivono a mano
+   nella tabella: il banco di prova cambia le manopole a gioco gia' caricato e
+   deve poter richiamare applyBal() per rimettere tutto in riga. */
+function applyBal() {
+    ARTIFACTS.forEach(a => {
+        if (a.slot !== 'weapon') return;
+        const n = a.els.length === 1 ? BAL.weapon1 : BAL.weapon2;
+        a.bonus = {};
+        a.els.forEach(e => { a.bonus[e] = n; });
+        const g = BAL.weaponGrant;
+        a.desc = a.els.length === 1
+            ? ELEMENT_INFO[a.els[0]].label + ' attacks deal +' + n + ' damage' +
+              (g > 0 ? ' · +' + g + ' ' + ELEMENT_INFO[a.els[0]].label.toLowerCase() +
+                       ' attacks right now' : '')
+            : ELEMENT_INFO[a.els[0]].label + ' and ' +
+              ELEMENT_INFO[a.els[1]].label.toLowerCase() + ' attacks deal +' + n + ' damage' +
+              (g > 0 ? ' · +' + Math.ceil(g / 2) + ' of each right now' : '');
+    });
+}
+applyBal();
+
 const ARTIFACT_BY_ID = {};
 ARTIFACTS.forEach(a => { ARTIFACT_BY_ID[a.id] = a; });
 
@@ -280,7 +316,7 @@ global.ElementData = {
     MONSTER_NAMES, artTier,
     baseDamage, isSuperEffective, isNotEffective, counterOf,
     QUESTS, CHALLENGES, isBossHp, rewardUnit,
-    ARTIFACTS, ARTIFACT_BY_ID
+    ARTIFACTS, ARTIFACT_BY_ID, applyBal
 };
 
 })(window);
