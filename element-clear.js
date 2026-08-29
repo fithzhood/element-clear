@@ -920,7 +920,13 @@ class Game {
             use.setAttribute('href', '#mod-' + m.id);
             svg.appendChild(use);
             b.appendChild(svg);
-            b.onclick = () => { Sfx.tap(); this.toast(m.title + ' — ' + m.desc); };
+            b.onclick = () => {
+                Sfx.tap();
+                /* letto: smette di chiamare l'attenzione. Continuare a pulsare
+                   dopo che l'hai guardato e' solo fastidio. */
+                b.classList.add('letto');
+                this.toast(m.title + ' — ' + m.desc);
+            };
             box.appendChild(b);
         });
     }

@@ -90,9 +90,14 @@ const BAL = {
        corsa non si appiattisce mai in discesa.
        Quanti se ne possono prendere insieme, invece, scala con l'onda: una
        decina in piu' di onde, un posto in piu'. */
-    modFrom: 20,      /* sotto questi attacchi in mano non ne esce nessuno    */
-    modFull: 70,      /* da qui in su la probabilita' e' al massimo           */
-    modMax:  1,       /* probabilita' massima, per ogni posto disponibile     */
+    modFrom:  30,     /* sotto questi attacchi in mano non ne esce nessuno    */
+    modFull:  70,     /* da qui in su la probabilita' e' al massimo           */
+    modMax:   1,      /* probabilita' massima, per ogni posto disponibile     */
+    /* La salita non e' dritta ma curva: con esponente 2 la probabilita' resta
+       bassa per buona parte della corsa e si impenna solo quando la mano e'
+       davvero piena. Una rampa lineare li faceva uscire gia' troppo presto —
+       a meta' strada erano gia' uno su due. */
+    modCurve: 2,
     /* Secondo lucchetto, spento di serie (0 = non si guarda): oltre al tipo
        scarso, pretende che anche la **mano intera** stia sotto onda/questo.
        Serve perche' la sola condizione sul tipo piu' scarso non frena niente —
@@ -310,7 +315,8 @@ function modChance(totalAttacks) {
     const a = BAL.modFrom, b = BAL.modFull;
     if (totalAttacks <= a) return 0;
     if (totalAttacks >= b) return BAL.modMax;
-    return (totalAttacks - a) / (b - a) * BAL.modMax;
+    const t = (totalAttacks - a) / (b - a);
+    return Math.pow(t, BAL.modCurve) * BAL.modMax;
 }
 
 /* ------------------------------------------------------------- artefatti */
