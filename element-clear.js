@@ -157,7 +157,10 @@ function risparmioDati() {
 /* Effetti sonori sintetizzati: nessun file da scaricare. */
 const Sfx = {
     ctx: null,
-    on: localStorage.getItem('elementBattle.sound') !== 'off',
+    /* Spenti di serie, tutti e due. Un gioco che parte facendo rumore da solo
+       si apre col telefono in mano in mezzo ad altra gente: si accendono dal
+       pannello `?`, che e' dove stanno gli interruttori. */
+    on: localStorage.getItem('elementBattle.sound') === 'on',
     ensure() {
         if (!this.ctx) {
             const AC = window.AudioContext || window.webkitAudioContext;
@@ -301,11 +304,15 @@ const Particles = {
 
 /* ---------------------------------------------------------------- musica
 
-   Due brani veri, generati con Suno e chiusi su se stessi con ffmpeg
-   (`audio/chiudi-loop.py`): `musica/tema.ogg` per le onde normali,
-   `musica/boss.ogg` per i boss. Stessa tonalita' (Re minore) e stesso
-   livello (-18 LUFS), cosi' il passaggio si fa in **dissolvenza incrociata**
-   invece che con un taglio.
+   Due loop chiptune del pack gratuito di **Abstraction**
+   (tallbeard.itch.io/music-loop-bundle): `musica/tema.ogg` per le onde normali
+   e `musica/boss.ogg` per i boss. Sono nati per girare in tondo, quindi non
+   c'e' stato niente da cucire; portati tutti e due a -18 LUFS, cosi' il
+   passaggio si fa in **dissolvenza incrociata** invece che con un taglio.
+
+   I primi due li aveva generati Suno: belli, ma con vocalizzi in mezzo. Per
+   questi giochi la voce non ci va, di nessun tipo — la regola sta nella skill
+   `colonne-sonore-suno`, insieme alle parole che la chiedono di nascosto.
 
    Perche' Ogg Opus e non m4a: misurato, l'AAC restituisce 512 campioni piu'
    di quelli che ha ricevuto (riempimento in testa). Sono undici millesimi di
@@ -321,7 +328,7 @@ const Particles = {
    onde non servono a niente. Se all'onda 10 non e' ancora sceso, il tema
    normale continua e il boss entra appena e' pronto — nessun silenzio. */
 const Music = {
-    on: localStorage.getItem('elementBattle.music') !== 'off',
+    on: localStorage.getItem('elementBattle.music') === 'on',
     ctx: null, master: null,
     voci: {},            /* nome -> { src, gain } delle voci che stanno suonando */
     acceso: false,       /* la partita e' in corso e il giocatore vuole musica */
@@ -1247,6 +1254,7 @@ class Game {
         dice('Light', 'Weak on its own. It pays back 1 attack of the type you have least of — but only while you are down to fewer than ' +
                       this.lightSoglia() + ' of it. It patches holes; it does not fill the pantry. With every type stocked, light gives nothing.');
         dice('Darkness', 'Hits hard but eats one other attack every time. Two darkness in a row and the second one hits for 14.');
+        dice('Music', 'Chiptune loops by Abstraction — tallbeard.itch.io/music-loop-bundle');
         dice('Attacks are the clock', 'Every attack you spend is gone. The game ends when your hand is empty, not when your health runs out.');
 
         this.dom.help.hidden = false;
