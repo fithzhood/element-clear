@@ -82,6 +82,17 @@ const BAL = {
        Quello che conta non e' quanto hai, ma quanto hai **per l'onda in cui
        sei**. */
     lightRefundDiv: 4,
+
+    /* Modificatori dei nemici. La probabilita' non scala con l'onda ma con
+       **quanti attacchi hai in mano**: e' la risposta al difetto piu' vecchio
+       del gioco, che passata l'onda 21 non aveva piu' attrito. Chi va bene
+       incontra un gioco piu' cattivo, chi arranca lo incontra piu' mite, e la
+       corsa non si appiattisce mai in discesa.
+       Quanti se ne possono prendere insieme, invece, scala con l'onda: una
+       decina in piu' di onde, un posto in piu'. */
+    modFrom: 20,      /* sotto questi attacchi in mano non ne esce nessuno    */
+    modFull: 70,      /* da qui in su la probabilita' e' al massimo           */
+    modMax:  1,       /* probabilita' massima, per ogni posto disponibile     */
     /* Secondo lucchetto, spento di serie (0 = non si guarda): oltre al tipo
        scarso, pretende che anche la **mano intera** stia sotto onda/questo.
        Serve perche' la sola condizione sul tipo piu' scarso non frena niente —
@@ -266,6 +277,42 @@ const CHALLENGES = [
     }
 ];
 
+/* ---------------------------------------------------------- modificatori */
+
+/* Nove modi di rendere un combattimento piu' scomodo. Toccano cose diverse
+   apposta — i punti vita, l'economia delle quest, gli artefatti, quanto si
+   vede delle ricompense, il danno — cosi' due modificatori insieme non sono
+   mai la stessa cosa detta due volte. */
+const MODIFIERS = [
+    { id: 'ward',   title: 'Warded',   desc: 'Ten more hit points than its wave says' },
+    { id: 'mute',   title: 'Mute',     desc: 'No quest in this fight: nothing extra to earn' },
+    { id: 'seal',   title: 'Sealed',   desc: 'Your artifacts do nothing here — no bonus damage, no attacks back' },
+    { id: 'curse',  title: 'Cursed',   desc: 'For three waves every reward is a mystery: you pick blind' },
+    { id: 'dull',   title: 'Dulling',  desc: 'Every attack of yours hits for 1 less' },
+    { id: 'scale',  title: 'Scaled',   desc: 'Super effective attacks are not doubled' },
+    { id: 'toll',   title: 'Toll',     desc: 'It takes 2 attacks from you the moment it arrives' },
+    { id: 'greed',  title: 'Ravenous', desc: 'The spoils from this fight are one attack smaller' },
+    { id: 'thorns', title: 'Thorned',  desc: 'Every third hit you land costs you one extra attack' }
+];
+
+const MODIFIER_BY_ID = {};
+MODIFIERS.forEach(m => { MODIFIER_BY_ID[m.id] = m; });
+
+/* Quanti ne puo' portare un nemico: nessuno nella prima decina, uno nella
+   seconda, due nella terza, e cosi' via. */
+function modSlots(wave) {
+    return Math.max(0, Math.floor((wave - 1) / 10));
+}
+
+/* Probabilita' che un posto sia occupato, in funzione di quanti attacchi ha in
+   mano il giocatore. Sotto `modFrom` e' zero, sopra `modFull` e' `modMax`. */
+function modChance(totalAttacks) {
+    const a = BAL.modFrom, b = BAL.modFull;
+    if (totalAttacks <= a) return 0;
+    if (totalAttacks >= b) return BAL.modMax;
+    return (totalAttacks - a) / (b - a) * BAL.modMax;
+}
+
 /* ------------------------------------------------------------- artefatti */
 
 /* slot: weapon (+danno) · shield (recupero a fine combattimento) · blessing (effetto unico)
@@ -395,6 +442,7 @@ global.ElementData = {
     MONSTER_NAMES, artTier,
     baseDamage, isSuperEffective, isNotEffective, counterOf,
     QUESTS, CHALLENGES, isBossHp, rewardUnit,
+    MODIFIERS, MODIFIER_BY_ID, modSlots, modChance,
     ARTIFACTS, ARTIFACT_BY_ID, applyBal
 };
 

@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>Element Battle</title>
 <link rel="icon" href="Element.png">
-<link rel="stylesheet" href="element-clear.css?v=18">
+<link rel="stylesheet" href="element-clear.css?v=19">
 </head>
 <body>
 
@@ -30,6 +30,43 @@
       <path d="M12 1.6v3.1M12 19.3v3.1M1.6 12h3.1M19.3 12h3.1"/>
       <path d="M4.6 4.6 6.8 6.8M17.2 17.2l2.2 2.2M19.4 4.6 17.2 6.8M6.8 17.2 4.6 19.4"/>
     </g>
+  </symbol>
+  <symbol id="mod-ward" viewBox="0 0 24 24">
+    <path d="M12 3l7 3v5.5c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="mod-mute" viewBox="0 0 24 24">
+    <path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M4 20 20 4" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="mod-seal" viewBox="0 0 24 24">
+    <rect x="4.5" y="10.5" width="15" height="10" rx="2.2" fill="none" stroke="currentColor" stroke-width="2.2"/>
+    <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/>
+  </symbol>
+  <symbol id="mod-curse" viewBox="0 0 24 24">
+    <path d="M8.6 8.8a3.5 3.5 0 1 1 4.6 3.4c-.8.3-1.2.9-1.2 1.7v.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <circle cx="12" cy="18.6" r="1.5" fill="currentColor"/>
+  </symbol>
+  <symbol id="mod-dull" viewBox="0 0 24 24">
+    <path d="M12 4v13" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M6.5 12.5 12 18.5l5.5-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="mod-scale" viewBox="0 0 24 24">
+    <path d="M5.5 13.5 12 7l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M4 20 20 4" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="mod-toll" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-width="2.2"/>
+    <path d="M7.6 12h8.8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="mod-greed" viewBox="0 0 24 24">
+    <path d="M6 9h12l1.4 10.4H4.6z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/>
+    <path d="M9 9V6.6a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" stroke-width="2.1"/>
+    <path d="M9.4 14.4h5.2" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="mod-thorns" viewBox="0 0 24 24">
+    <path d="M12 3.2 14.6 10H9.4z" fill="currentColor"/>
+    <path d="M5 20.8 8.2 13h2.2L7.4 20.8z" fill="currentColor"/>
+    <path d="M19 20.8 15.8 13h-2.2l3 7.8z" fill="currentColor"/>
   </symbol>
   <symbol id="sig-sword" viewBox="0 0 24 24">
     <path d="M12 1.4 15 8.2v6.1H9V8.2Z" fill="currentColor"/>
@@ -92,6 +129,7 @@
           <div id="portrait-art"></div>
           <div id="portrait-frame"></div>
           <button id="badge" aria-label="Enemy element"></button>
+          <div id="mods" hidden></div>
         </div>
         <canvas id="particles"></canvas>
       </div>
@@ -203,7 +241,7 @@
   <div id="toast"></div>
 </div>
 
-<script src="element-data.js?v=18"></script>
-<script src="element-clear.js?v=18"></script>
+<script src="element-data.js?v=19"></script>
+<script src="element-clear.js?v=19"></script>
 </body>
 </html>

@@ -552,6 +552,7 @@ class Game {
             artshowName:  $('#artshow-name'),
             artshowDesc:  $('#artshow-desc'),
             artshowGo:    $('#btn-artshow-go'),
+            mods:         $('#mods'),
             mystery:      $('#mystery'),
             mysteryMark:  $('#mystery-mark'),
             mysteryName:  $('#mystery-name'),
@@ -599,7 +600,10 @@ class Game {
             localStorage.setItem(SAVE_KEY, JSON.stringify({
                 wave: this.wave,
                 attacks: this.attacks,
-                enemy: { element: this.enemy.element, hp: this.enemy.hp, maxHp: this.enemy.maxHp },
+                enemy: { element: this.enemy.element, hp: this.enemy.hp, maxHp: this.enemy.maxHp,
+                         baseHp: this.enemy.baseHp, hits: this.enemy.hits || 0,
+                         mods: (this.enemy.mods || []).map(m => m.id) },
+                cursed: this.cursed || 0,
                 nextElement: this.nextElement,
                 lastAttack: this.lastAttack,
                 artifacts: this.artifacts.map(a => a.id),
@@ -632,6 +636,7 @@ class Game {
     newGame() {
         localStorage.removeItem(SAVE_KEY);
         this.wave     = 1;
+        this.cursed   = 0;
         this.attacks  = Object.assign({}, D.BAL.start);
         this.enemy    = null;
         this.nextElement = null;
@@ -665,11 +670,16 @@ class Game {
         this.bossNerfed  = !!s.bossNerfed;
         this.qs          = s.qs || this.freshQuestState();
 
-        const maxHp = s.enemy.maxHp;
+        const maxHp  = s.enemy.maxHp;
+        const baseHp = s.enemy.baseHp || maxHp;
+        const tier   = D.artTier(baseHp);
+        this.cursed  = s.cursed || 0;
         this.enemy = {
-            element: s.enemy.element, hp: s.enemy.hp, maxHp: maxHp,
-            tier: D.artTier(maxHp), boss: D.isBossHp(maxHp),
-            name: MONSTER_NAMES[s.enemy.element][D.artTier(maxHp) - 1]
+            element: s.enemy.element, hp: s.enemy.hp, maxHp: maxHp, baseHp: baseHp,
+            tier: tier, boss: D.isBossHp(baseHp),
+            hits: s.enemy.hits || 0,
+            mods: (s.enemy.mods || []).map(id => D.MODIFIER_BY_ID[id]).filter(Boolean),
+            name: MONSTER_NAMES[s.enemy.element][tier - 1]
         };
 
         /* La sfida del boss viene ripristinata SENZA riapplicare l'effetto d'ingresso:
@@ -708,12 +718,20 @@ class Game {
         if (!this.nextElement) {
             this.nextElement = this.enemy === null ? rand(BASIC) : rand(ELEMENTS);
         }
-        const maxHp = 10 + (this.wave - 1);
-        const tier  = D.artTier(maxHp);
+        /* I PV nominali dell'onda restano il metro di tutto — livello
+           dell'illustrazione, boss si o no, ricompense, record. Il modificatore
+           che aggiunge vita ne cambia solo quanta ne ha addosso: se cambiasse
+           anche il metro, un mostro dell'onda 11 con dieci PV in piu' si
+           trasformerebbe in un boss. */
+        const baseHp = 10 + (this.wave - 1);
+        const tier   = D.artTier(baseHp);
+        const mods   = this.rollModifiers(baseHp);
+        const maxHp  = baseHp + (mods.some(m => m.id === 'ward') ? 10 : 0);
         this.enemy = {
             element: this.nextElement,
-            hp: maxHp, maxHp: maxHp, tier: tier,
-            boss: D.isBossHp(maxHp),
+            hp: maxHp, maxHp: maxHp, baseHp: baseHp, tier: tier,
+            boss: D.isBossHp(baseHp),
+            mods: mods, hits: 0,
             name: MONSTER_NAMES[this.nextElement][tier - 1]
         };
         this.nextElement = rand(ELEMENTS);
@@ -721,6 +739,7 @@ class Game {
         this.questFailed = false;
         this.resetQuestState();
 
+        this.applyModEntry();
         this.pickQuestOrChallenge();
         this.renderAll();
         /* dopo renderAll, non prima: chi e' in scena adesso ha la precedenza
@@ -730,6 +749,81 @@ class Game {
                                setTimeout(() => this.dom.portrait.classList.remove('boss-enter'), 900); }
         this.save();
         if (this.totalAttacks() === 0) this.gameOver();
+    }
+
+    /* --------------------------------------------------- modificatori */
+
+    /* Quanti posti ha questa onda, e quanti se ne riempiono. Il tiro guarda la
+       ricchezza, non l'onda: e' tutto il punto. */
+    rollModifiers(baseHp) {
+        /* i boss no: hanno gia' la loro sfida, e sommarci tre modificatori
+           vorrebbe dire punire due volte la stessa onda */
+        if (D.isBossHp(baseHp)) return [];
+        const posti = D.modSlots(this.wave);
+        if (posti <= 0) return [];
+        const p = D.modChance(this.totalAttacks());
+        if (p <= 0) return [];
+        const urna = D.MODIFIERS.slice();
+        const presi = [];
+        for (let i = 0; i < posti && urna.length; i++) {
+            if (Math.random() >= p) continue;
+            presi.push(urna.splice(Math.floor(Math.random() * urna.length), 1)[0]);
+        }
+        return presi;
+    }
+
+    hasMod(id) {
+        return !!(this.enemy && this.enemy.mods && this.enemy.mods.some(m => m.id === id));
+    }
+
+    /* Quelli che mordono appena il mostro arriva. */
+    applyModEntry() {
+        if (this.hasMod('toll')) {
+            for (let i = 0; i < 2; i++) {
+                const pool = ELEMENTS.filter(e => this.attacks[e] > 0);
+                if (!pool.length) break;
+                const t = rand(pool);
+                this.attacks[t]--;
+                this.floatOnButton(t, -1);
+            }
+            Sfx.loss();
+        }
+        /* la maledizione dura tre onde, e si rinnova se ne arriva un'altra */
+        if (this.hasMod('curse')) this.cursed = 3;
+    }
+
+    /* Il pegno del rovo: ogni terzo colpo andato a segno costa un attacco. */
+    applyModHit() {
+        if (!this.hasMod('thorns')) return;
+        this.enemy.hits = (this.enemy.hits || 0) + 1;
+        if (this.enemy.hits % 3) return;
+        const pool = ELEMENTS.filter(e => this.attacks[e] > 0);
+        if (!pool.length) return;
+        const t = rand(pool);
+        this.attacks[t]--;
+        this.floatOnButton(t, -1);
+        Sfx.loss();
+    }
+
+    renderMods() {
+        const box = this.dom.mods;
+        box.innerHTML = '';
+        const mods = (this.enemy && this.enemy.mods) || [];
+        box.hidden = !mods.length;
+        mods.forEach((m, i) => {
+            const b = el('button', 'mod');
+            b.style.animationDelay = (i * 70) + 'ms';
+            b.setAttribute('aria-label', m.title);
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('aria-hidden', 'true');
+            const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+            use.setAttribute('href', '#mod-' + m.id);
+            svg.appendChild(use);
+            b.appendChild(svg);
+            b.onclick = () => { Sfx.tap(); this.toast(m.title + ' — ' + m.desc); };
+            box.appendChild(b);
+        });
     }
 
     /* Chi arriva dopo e' gia' deciso: la sua figura si scarica adesso, mentre
@@ -749,6 +843,8 @@ class Game {
         this.bossNerfed = false;
 
         if (!this.enemy.boss) {
+            /* il muto non ha niente da chiedere, e quindi niente da pagare */
+            if (this.hasMod('mute')) return;
             const pool = D.QUESTS.filter(q => q.avail(this));
             if (pool.length) this.quest = rand(pool);
             return;
@@ -820,11 +916,16 @@ class Game {
 
     damageOf(element) {
         const chained = element === 'darkness' && this.lastAttack === 'darkness';
-        const noSuper = !!(this.challenge && this.challenge.type === 'noEffectiveDamage');
+        const noSuper = !!(this.challenge && this.challenge.type === 'noEffectiveDamage')
+                        || this.hasMod('scale');
         let d = D.baseDamage(element, this.enemy.element, chained, noSuper);
-        this.artifacts.forEach(a => { if (a.bonus && a.bonus[element]) d += a.bonus[element]; });
+        /* col sigillo gli artefatti sono carta straccia, per questo scontro */
+        if (!this.hasMod('seal'))
+            this.artifacts.forEach(a => { if (a.bonus && a.bonus[element]) d += a.bonus[element]; });
         /* la corazza elementale non toglie solo il super: smorza ogni colpo */
-        if (noSuper) d = Math.max(1, d - D.BAL.chArmor);
+        if (this.challenge && this.challenge.type === 'noEffectiveDamage')
+            d = Math.max(1, d - D.BAL.chArmor);
+        if (this.hasMod('dull')) d = Math.max(1, d - 1);
         return d;
     }
 
@@ -854,6 +955,7 @@ class Game {
         this.enemy.hp -= dmg;
         this.lastAttack = element;
         this.trackQuest(element);
+        this.applyModHit();
 
         /* effetti */
         Sfx.hit(element, D.isSuperEffective(element, this.enemy.element) || chained);
@@ -1009,7 +1111,7 @@ class Game {
         this.renderAttacks();
 
         /* record: vale anche per i boss (nel vecchio gioco i boss non contavano) */
-        const score = this.enemy.maxHp;
+        const score = this.enemy.baseHp || this.enemy.maxHp;
         if (score > this.best.normal) { this.best.normal = score; this.saveBest(); this.renderTop(); this.toast('New record: ' + score); }
 
         /* il resoconto va raccolto adesso: fra due righe la quest non c'e' piu' */
@@ -1048,6 +1150,8 @@ class Game {
     }
 
     applyShields() {
+        /* col sigillo gli scudi non restituiscono niente */
+        if (this.hasMod('seal')) return [];
         const gained = {};
         const dettaglio = [];
         this.artifacts.forEach(a => {
@@ -1149,7 +1253,12 @@ class Game {
 
     /* ---------------------------------------------------------- ricompense */
 
-    packSize() { return D.rewardUnit(this.enemy.maxHp); }
+    /* Sui PV nominali, non su quelli gonfiati dal modificatore: se no il mostro
+       che si e' fatto piu' duro pagherebbe anche di piu'. */
+    packSize() {
+        const n = D.rewardUnit(this.enemy.baseHp || this.enemy.maxHp);
+        return Math.max(1, n - (this.hasMod('greed') ? 1 : 0));
+    }
 
     makePack(n) {
         const p = {};
@@ -1254,6 +1363,10 @@ class Game {
         dice('Light', 'Weak on its own. It pays back 1 attack of the type you have least of — but only while you are down to fewer than ' +
                       this.lightSoglia() + ' of it. It patches holes; it does not fill the pantry. With every type stocked, light gives nothing.');
         dice('Darkness', 'Hits hard but eats one other attack every time. Two darkness in a row and the second one hits for 14.');
+        const mods = this.enemy && this.enemy.mods && this.enemy.mods.length
+            ? this.enemy.mods.map(m => m.title + ': ' + m.desc.toLowerCase()).join(' · ')
+            : 'None on this one. They start showing up after wave 10, and the more attacks you are sitting on, the more likely they get — a rich run meets a nastier game.';
+        dice('This enemy', mods);
         dice('Music', 'Chiptune loops by Abstraction — tallbeard.itch.io/music-loop-bundle');
         dice('Attacks are the clock', 'Every attack you spend is gone. The game ends when your hand is empty, not when your health runs out.');
 
@@ -1286,18 +1399,26 @@ class Game {
         this.dom.rewardIn.innerHTML = '';
         this.dom.rewardIn.className = 'packs';
 
+        /* sotto maledizione non si vede piu' niente: si sceglie alla cieca, e
+           l'unica differenza fra le carte e' quella che si scopre dopo */
+        const cieco = this.cursed > 0;
         made.forEach((p, i) => {
-            const card = el('button', 'pack');
+            const card = el('button', 'pack' + (cieco ? ' mystery' : ''));
             card.style.animationDelay = (i * 60) + 'ms';
-            const row = el('div', 'pack-row');
-            Object.keys(p).sort().forEach(e => {
-                const chip = el('span', 'pack-chip ' + e);
-                chip.appendChild(sigil(e));
-                chip.appendChild(el('b', null, String(p[e])));
-                row.appendChild(chip);
-            });
-            card.appendChild(row);
-            card.onclick = () => this.takePackage(p);
+            if (cieco) {
+                card.appendChild(el('div', 'pack-q', '?'));
+                card.onclick = () => this.takePackage(p, 'ok');
+            } else {
+                const row = el('div', 'pack-row');
+                Object.keys(p).sort().forEach(e => {
+                    const chip = el('span', 'pack-chip ' + e);
+                    chip.appendChild(sigil(e));
+                    chip.appendChild(el('b', null, String(p[e])));
+                    row.appendChild(chip);
+                });
+                card.appendChild(row);
+                card.onclick = () => this.takePackage(p);
+            }
             this.dom.rewardIn.appendChild(card);
         });
 
@@ -1505,6 +1626,7 @@ class Game {
 
     nextWave() {
         if (!this.endless && this.wave >= FINAL_WAVE) { this.showEnding(); return; }
+        if (this.cursed > 0) this.cursed--;
         this.wave++;
         this.dom.portrait.classList.remove('defeated');
         this.phase = 'fight';
@@ -1600,6 +1722,7 @@ class Game {
         this.dom.badge.innerHTML = '';
         this.dom.badge.appendChild(sigil(e.element));
         this.dom.portrait.classList.toggle('defeated', e.hp <= 0);
+        this.renderMods();
     }
 
     renderHp() {
