@@ -503,6 +503,50 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
+/* ------------------------------------------------------------- fumetti
+
+   Alcune regole di questo gioco non si vedono: la luce che rende un attacco
+   solo a certe condizioni, il buio che ne toglie uno ma raddoppia il colpo
+   dopo, un modificatore che cambia le regole del combattimento. Sono cose che
+   si scoprono per caso dopo venti partite, oppure gliele si dice **la prima
+   volta che succedono**, indicando il punto.
+
+   Ognuno esce una volta sola e non torna piu'; la casella li spegne tutti per
+   sempre, per chi le regole le sa gia'. */
+const Tips = {
+    off: localStorage.getItem('elementBattle.tips') === 'off',
+    visti: (function () {
+        try { return new Set(JSON.parse(localStorage.getItem('elementBattle.tipsSeen')) || []); }
+        catch (e) { return new Set(); }
+    })(),
+    da_mostrare(id) { return !this.off && !this.visti.has(id); },
+    segna(id) {
+        this.visti.add(id);
+        try { localStorage.setItem('elementBattle.tipsSeen', JSON.stringify([...this.visti])); }
+        catch (e) { /* niente */ }
+    },
+    spegni() {
+        this.off = true;
+        localStorage.setItem('elementBattle.tips', 'off');
+    }
+};
+
+const TIP_TESTI = {
+    light: 'Light just paid you back. It hands you one attack of the type you have ' +
+           'least of — but only while you are down to fewer than a quarter of the wave ' +
+           'number of it. When every type is stocked, light gives nothing.',
+    darkness: 'Darkness hits hard, but it eats one of your other attacks every time. ' +
+              'Use two in a row and the second one lands for 14 instead of 7.',
+    mod: 'This one came with something on it. The badges change the rules of this ' +
+         'fight — tap one to read it. They start after wave 10, and the more attacks ' +
+         'you are sitting on, the more likely they get.',
+    quest: 'A quest: clear it in this fight and it pays the reward written under it. ' +
+           'Break its condition and you lose the reward, not the fight.',
+    challenge: 'Boss challenge. It bites for the whole fight and you cannot refuse it — ' +
+               'read it before you spend anything, because some of them punish exactly ' +
+               'the attack you were about to use.'
+};
+
 /* ==================================================================== gioco */
 
 class Game {
@@ -553,6 +597,11 @@ class Game {
             artshowDesc:  $('#artshow-desc'),
             artshowGo:    $('#btn-artshow-go'),
             mods:         $('#mods'),
+            tip:          $('#tip'),
+            tipVeil:      $('#tip-veil'),
+            tipText:      $('#tip-text'),
+            tipBox:       $('#tip-never-box'),
+            tipOk:        $('#tip-ok'),
             mystery:      $('#mystery'),
             mysteryMark:  $('#mystery-mark'),
             mysteryName:  $('#mystery-name'),
@@ -751,14 +800,64 @@ class Game {
         if (this.totalAttacks() === 0) this.gameOver();
     }
 
+    /* --------------------------------------------------------- fumetti */
+
+    /* Il fumetto si posiziona misurando il bersaglio, quindi va aperto quando
+       il disegno e' finito: chiamato in mezzo a una `render*` misurerebbe un
+       elemento che sta ancora prendendo posto. */
+    tipDopo(id, bersaglio) {
+        if (FAST || !Tips.da_mostrare(id)) return;
+        setTimeout(() => this.tip(id, bersaglio), 260);
+    }
+
+    /* Mostra il fumetto una volta sola, con la punta sul bersaglio. Aspetta il
+       tocco: e' il momento in cui si vuole leggere, non uno da saltare. */
+    tip(id, bersaglio) {
+        if (FAST || !TIP_TESTI[id] || !Tips.da_mostrare(id)) return Promise.resolve();
+        const nodo = typeof bersaglio === 'string' ? $(bersaglio) : bersaglio;
+        if (!nodo || nodo.hidden) return Promise.resolve();
+        const r = nodo.getBoundingClientRect();
+        if (!r.width && !r.height) return Promise.resolve();
+        Tips.segna(id);
+
+        const box = this.dom.tip;
+        this.dom.tipText.textContent = TIP_TESTI[id];
+        this.dom.tipBox.checked = false;
+        box.hidden = false;
+        this.dom.tipVeil.hidden = false;
+
+        /* si mette sopra il bersaglio, e sotto solo se sopra non ci sta */
+        const w = box.offsetWidth, h = box.offsetHeight, m = 10;
+        const sopra = r.top - h - 14 >= m;
+        box.classList.toggle('sopra', sopra);
+        box.classList.toggle('sotto', !sopra);
+        box.style.top = (sopra ? r.top - h - 14 : r.bottom + 14) + 'px';
+        const cx = r.left + r.width / 2;
+        const left = clamp(cx - w / 2, m, window.innerWidth - w - m);
+        box.style.left = left + 'px';
+        /* la punta segue il bersaglio anche quando il fumetto e' stato spostato
+           per non uscire dallo schermo */
+        box.style.setProperty('--ax', clamp(cx - left, 16, w - 16) + 'px');
+
+        Sfx.tap();
+        return new Promise(res => {
+            this.dom.tipOk.onclick = () => {
+                if (this.dom.tipBox.checked) Tips.spegni();
+                box.hidden = true;
+                this.dom.tipVeil.hidden = true;
+                this.dom.tipOk.onclick = null;
+                res();
+            };
+        });
+    }
+
     /* --------------------------------------------------- modificatori */
 
     /* Quanti posti ha questa onda, e quanti se ne riempiono. Il tiro guarda la
        ricchezza, non l'onda: e' tutto il punto. */
     rollModifiers(baseHp) {
-        /* i boss no: hanno gia' la loro sfida, e sommarci tre modificatori
-           vorrebbe dire punire due volte la stessa onda */
-        if (D.isBossHp(baseHp)) return [];
+        /* i boss li prendono come tutti, sopra alla loro sfida: e' una scelta
+           esplicita, e si sente proprio nel finale */
         const posti = D.modSlots(this.wave);
         if (posti <= 0) return [];
         const p = D.modChance(this.totalAttacks());
@@ -950,7 +1049,7 @@ class Game {
 
         this.attacks[element]--;
         if (element === 'light')         this.lightRefund();
-        else if (element === 'darkness') this.removeRandomAttack();
+        else if (element === 'darkness') { this.removeRandomAttack(); this.tipDopo('darkness', '.atk.darkness'); }
 
         this.enemy.hp -= dmg;
         this.lastAttack = element;
@@ -1020,6 +1119,7 @@ class Game {
         this.attacks[t]++;
         this.floatOnButton(t, +1);
         Sfx.gain();
+        this.tipDopo('light', '.atk.light');
         return true;
     }
 
@@ -1723,6 +1823,7 @@ class Game {
         this.dom.badge.appendChild(sigil(e.element));
         this.dom.portrait.classList.toggle('defeated', e.hp <= 0);
         this.renderMods();
+        if (e.mods && e.mods.length) this.tipDopo('mod', '#mods');
     }
 
     renderHp() {
@@ -1772,6 +1873,7 @@ class Game {
 
         if (this.challenge) {
             box.className = 'challenge';
+            this.tipDopo('challenge', '#quest');
             box.appendChild(el('div', 'q-kind', 'BOSS CHALLENGE'));
             box.appendChild(el('div', 'q-title', this.challenge.title));
             box.appendChild(el('div', 'q-desc', this.challengeDescription()));
@@ -1780,6 +1882,7 @@ class Game {
         if (!this.quest) { box.className = 'empty'; return; }
 
         box.className = 'quest' + (this.questFailed ? ' failed' : '');
+        this.tipDopo('quest', '#quest');
         box.appendChild(el('div', 'q-kind', this.questFailed ? 'QUEST FAILED' : 'QUEST'));
         box.appendChild(el('div', 'q-title', this.quest.title));
         box.appendChild(el('div', 'q-desc', this.quest.desc));

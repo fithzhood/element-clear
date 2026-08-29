@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>Element Battle</title>
 <link rel="icon" href="Element.png">
-<link rel="stylesheet" href="element-clear.css?v=19">
+<link rel="stylesheet" href="element-clear.css?v=20">
 </head>
 <body>
 
@@ -170,6 +170,14 @@
     </div>
   </div>
 
+  <!-- ------------------ il fumetto che spiega una cosa la prima volta -->
+  <div id="tip-veil" hidden></div>
+  <div id="tip" hidden>
+    <p id="tip-text"></p>
+    <label id="tip-never"><input type="checkbox" id="tip-never-box"> Don't show tips again</label>
+    <button id="tip-ok" type="button">Got it</button>
+  </div>
+
   <!-- --------------------------------------- prontuario degli attacchi -->
   <div id="help" class="overlay" hidden>
     <div class="overlay-box">
@@ -241,7 +249,7 @@
   <div id="toast"></div>
 </div>
 
-<script src="element-data.js?v=19"></script>
-<script src="element-clear.js?v=19"></script>
+<script src="element-data.js?v=20"></script>
+<script src="element-clear.js?v=20"></script>
 </body>
 </html>
