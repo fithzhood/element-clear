@@ -519,6 +519,7 @@ const Tips = {
         try { return new Set(JSON.parse(localStorage.getItem('elementBattle.tipsSeen')) || []); }
         catch (e) { return new Set(); }
     })(),
+    coda: [],
     da_mostrare(id) { return !this.off && !this.visti.has(id); },
     segna(id) {
         this.visti.add(id);
@@ -528,6 +529,13 @@ const Tips = {
     spegni() {
         this.off = true;
         localStorage.setItem('elementBattle.tips', 'off');
+    },
+    riaccendi() {
+        this.off = false;
+        this.visti.clear();
+        this.coda.length = 0;
+        localStorage.removeItem('elementBattle.tips');
+        localStorage.removeItem('elementBattle.tipsSeen');
     }
 };
 
@@ -813,12 +821,22 @@ class Game {
     /* Mostra il fumetto una volta sola, con la punta sul bersaglio. Aspetta il
        tocco: e' il momento in cui si vuole leggere, non uno da saltare. */
     tip(id, bersaglio) {
-        if (FAST || !TIP_TESTI[id] || !Tips.da_mostrare(id)) return Promise.resolve();
+        if (FAST || !TIP_TESTI[id] || !Tips.da_mostrare(id)) return;
+        /* Uno alla volta. Se ce n'e' gia' uno aperto questo si mette in fila
+           invece di prendergli il posto: prima si sovrascrivevano, e quello
+           coperto restava segnato come "gia' visto" senza che nessuno l'avesse
+           letto — succedeva all'onda 11, dove quest e modificatore arrivano
+           nello stesso istante. */
+        if (this.tipAperto) {
+            if (!Tips.coda.some(x => x[0] === id)) Tips.coda.push([id, bersaglio]);
+            return;
+        }
         const nodo = typeof bersaglio === 'string' ? $(bersaglio) : bersaglio;
-        if (!nodo || nodo.hidden) return Promise.resolve();
+        if (!nodo || nodo.hidden) { this.prossimoTip(); return; }
         const r = nodo.getBoundingClientRect();
-        if (!r.width && !r.height) return Promise.resolve();
+        if (!r.width && !r.height) { this.prossimoTip(); return; }
         Tips.segna(id);
+        this.tipAperto = true;
 
         const box = this.dom.tip;
         this.dom.tipText.textContent = TIP_TESTI[id];
@@ -840,15 +858,20 @@ class Game {
         box.style.setProperty('--ax', clamp(cx - left, 16, w - 16) + 'px');
 
         Sfx.tap();
-        return new Promise(res => {
-            this.dom.tipOk.onclick = () => {
-                if (this.dom.tipBox.checked) Tips.spegni();
-                box.hidden = true;
-                this.dom.tipVeil.hidden = true;
-                this.dom.tipOk.onclick = null;
-                res();
-            };
-        });
+        this.dom.tipOk.onclick = () => {
+            if (this.dom.tipBox.checked) { Tips.spegni(); Tips.coda.length = 0; }
+            box.hidden = true;
+            this.dom.tipVeil.hidden = true;
+            this.dom.tipOk.onclick = null;
+            this.tipAperto = false;
+            this.prossimoTip();
+        };
+    }
+
+    /* il prossimo della fila, con un respiro in mezzo */
+    prossimoTip() {
+        const p = Tips.coda.shift();
+        if (p) setTimeout(() => this.tip(p[0], p[1]), 240);
     }
 
     /* --------------------------------------------------- modificatori */
@@ -1476,6 +1499,19 @@ class Game {
         dice('Music', 'Chiptune loops by Abstraction — tallbeard.itch.io/music-loop-bundle');
         dice('Attacks are the clock', 'Every attack you spend is gone. The game ends when your hand is empty, not when your health runs out.');
 
+        /* i fumetti escono una volta sola: senza un modo per riaverli, uno
+           saltato e' perso per sempre */
+        const rivedi = el('button', 'switch help-tips');
+        rivedi.appendChild(el('span', null, Tips.off || Tips.visti.size ? 'Show tips again' : 'Tips are on'));
+        rivedi.disabled = !(Tips.off || Tips.visti.size);
+        rivedi.onclick = () => {
+            Tips.riaccendi();
+            rivedi.disabled = true;
+            rivedi.firstChild.textContent = 'Tips are on';
+            Sfx.gain();
+        };
+        note.appendChild(rivedi);
+
         this.dom.help.hidden = false;
         this.dom.helpGo.onclick = () => { this.dom.help.hidden = true; };
     }
@@ -2075,6 +2111,7 @@ function boot() {
         }
         window.__elFx = Particles;   /* esposto per il banco di prova */
         window.__elMusic = Music;    /* idem: `_musica.html` collauda i due brani */
+        window.__elTips = Tips;      /* idem: il banco prova a riaccenderli */
         window.__el = new Game();
     } catch (err) {
         console.error(err);

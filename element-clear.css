@@ -660,6 +660,10 @@ button { font: inherit; color: inherit; border: 0; padding: 0; background: none;
 .switch.muted .slash { opacity: 1; }
 .switch.muted .wave1, .switch.muted .wave2 { opacity: 0; }
 
+/* il pulsante per rivedere i fumetti, in fondo al prontuario */
+.help-tips { width: 100%; margin-top: 2px; }
+.help-tips:disabled { opacity: .45; cursor: default; }
+
 /* prontuario degli attacchi */
 #help-rows { display: flex; flex-direction: column; gap: 3px; }
 #help-notes { display: flex; flex-direction: column; gap: 7px; margin-top: 2px; }
