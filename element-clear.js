@@ -514,32 +514,32 @@ document.addEventListener('visibilitychange', () => {
    Ognuno esce una volta sola e non torna piu'; la casella li spegne tutti per
    sempre, per chi le regole le sa gia'. */
 const Tips = {
-    /* Due livelli, e uno solo sopravvive allo spegnimento.
+    /* Ogni fumetto esce una volta sola per avvio: `visti` vive **solo in
+       memoria**, quindi riaprendo il gioco ricominciano da capo.
 
-       `mai` e' l'impostazione vera: sta nel magazzino e si cambia dal
-       pannello `?`. `off` e `visti` vivono **solo in memoria**, quindi
-       riaprendo il gioco i fumetti ricominciano da capo — la casella sul
-       fumetto vale per questa partita, non per sempre. */
+       C'era anche una casella *basta per stavolta* sul fumetto stesso: e' stata
+       tolta, e il motivo va ricordato. Zittiva **tutti** i fumetti successivi,
+       non solo quello che si stava leggendo — chi la spuntava sul primo (la
+       quest, che esce subito) non vedeva mai piu' quelli della luce e del buio,
+       e sembrava che non funzionassero. Non ripetersi lo fanno gia' da soli;
+       per spegnerli davvero c'e' l'interruttore nelle impostazioni. */
     mai: localStorage.getItem('elementBattle.tipsOff') === 'yes',
-    off: false,
     visti: new Set(),
     coda: [],
-    da_mostrare(id) { return !this.mai && !this.off && !this.visti.has(id); },
+    da_mostrare(id) { return !this.mai && !this.visti.has(id); },
     segna(id) { this.visti.add(id); },
-    spegni() { this.off = true; this.coda.length = 0; },
     /* l'interruttore delle impostazioni: acceso azzera anche la partita in corso */
     permanente(spente) {
         this.mai = spente;
         if (spente) { localStorage.setItem('elementBattle.tipsOff', 'yes'); this.coda.length = 0; }
-        else        { localStorage.removeItem('elementBattle.tipsOff');
-                      this.off = false; this.visti.clear(); }
+        else        { localStorage.removeItem('elementBattle.tipsOff'); this.visti.clear(); }
     }
 };
 
 const TIP_TESTI = {
-    light: 'Light just paid you back. It hands you one attack of the type you have ' +
-           'least of — but only while you are down to fewer than a quarter of the wave ' +
-           'number of it. When every type is stocked, light gives nothing.',
+    light: 'That +1 means light is loaded: spend it and it hands you back one attack ' +
+           'of the type you have least of. It only does that while you are short of ' +
+           'something — with every type stocked, light gives nothing and the +1 goes away.',
     darkness: 'Darkness hits hard, but it eats one of your other attacks every time. ' +
               'Use two in a row and the second one lands for 14 instead of 7.',
     mod: 'This one came with something on it. The badges change the rules of this ' +
@@ -605,7 +605,6 @@ class Game {
             tip:          $('#tip'),
             tipVeil:      $('#tip-veil'),
             tipText:      $('#tip-text'),
-            tipBox:       $('#tip-never-box'),
             tipOk:        $('#tip-ok'),
             mystery:      $('#mystery'),
             mysteryMark:  $('#mystery-mark'),
@@ -848,7 +847,6 @@ class Game {
 
         const box = this.dom.tip;
         this.dom.tipText.textContent = TIP_TESTI[id];
-        this.dom.tipBox.checked = false;
         box.hidden = false;
         this.dom.tipVeil.hidden = false;
 
@@ -867,7 +865,6 @@ class Game {
 
         Sfx.tap();
         this.dom.tipOk.onclick = () => {
-            if (this.dom.tipBox.checked) Tips.spegni();
             box.hidden = true;
             this.dom.tipVeil.hidden = true;
             this.dom.tipOk.onclick = null;
@@ -1086,7 +1083,7 @@ class Game {
 
         this.attacks[element]--;
         if (element === 'light')         this.lightRefund();
-        else if (element === 'darkness') { this.removeRandomAttack(); this.tipDopo('darkness', '.atk.darkness'); }
+        else if (element === 'darkness') this.removeRandomAttack();
 
         this.enemy.hp -= dmg;
         this.lastAttack = element;
@@ -1119,6 +1116,12 @@ class Game {
         }
 
         if (this.enemy.hp <= 0) { await this.victory(); return; }
+
+        /* Il fumetto del buio arriva **dopo** che si e' visto l'effetto, e solo
+           se il mostro e' ancora in piedi: sul colpo che uccide finirebbe
+           sopra la schermata delle ricompense, a spiegare una cosa che ormai
+           e' passata. */
+        if (element === 'darkness') this.tipDopo('darkness', '.atk.darkness');
 
         this.save();
         if (this.totalAttacks() === 0) this.gameOver();
@@ -1156,7 +1159,6 @@ class Game {
         this.attacks[t]++;
         this.floatOnButton(t, +1);
         Sfx.gain();
-        this.tipDopo('light', '.atk.light');
         return true;
     }
 
@@ -1901,6 +1903,10 @@ class Game {
             btn.onclick = () => this.attack(e);
             box.appendChild(btn);
         });
+        /* Il fumetto della luce si apre quando il `+1` e' **a schermo**, non
+           quando il rimborso scatta: col rimborso raro si poteva vedere il
+           bollino per venti onde senza che nessuno lo spiegasse. */
+        if (this.phase === 'fight' && this.lightArmata()) this.tipDopo('light', '.atk.light');
     }
 
     renderQuest() {

@@ -374,12 +374,7 @@ button { font: inherit; color: inherit; border: 0; padding: 0; background: none;
 }
 #tip.sopra::after  { bottom: -17px; border-top-color: #f4f1e8; }
 #tip.sotto::after  { top: -17px; border-bottom-color: #f4f1e8; }
-#tip p { margin: 0 0 9px; font-size: .84rem; line-height: 1.4; }
-#tip-never {
-    display: flex; align-items: center; gap: 7px;
-    font-size: .7rem; opacity: .7; margin-bottom: 9px; cursor: pointer;
-}
-#tip-never input { width: 15px; height: 15px; accent-color: #191b22; }
+#tip p { margin: 0 0 10px; font-size: .84rem; line-height: 1.4; }
 #tip-ok {
     width: 100%; padding: 9px; border-radius: 10px;
     background: #191b22; color: #f4f1e8;
