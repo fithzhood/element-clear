@@ -175,7 +175,26 @@ button { font: inherit; color: inherit; border: 0; padding: 0; background: none;
     40%, 60% { transform: translate(var(--shake), 0); }
 }
 
-#enemy-head { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+/* La riga del nome tiene il nome al centro e l'audio all'estremita' destra:
+   li' c'era spazio sprecato, e sono i due comandi che si cercano di corsa. */
+#enemy-head {
+    position: relative; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; min-height: 32px;
+    padding: 0 70px;   /* tanto quanto i due pulsanti, cosi' il nome resta in mezzo */
+}
+#head-audio { position: absolute; right: 0; display: flex; gap: 4px; }
+.mini {
+    width: 31px; height: 31px; padding: 5px; border-radius: 9px;
+    background: rgba(10, 13, 24, .5);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: #eef1f8; opacity: .9;
+}
+.mini .ico { width: 100%; height: 100%; display: block; }
+.mini .slash { opacity: 0; }
+.mini.muted { opacity: .42; }
+.mini.muted .slash { opacity: 1; }
+.mini.muted .wave1, .mini.muted .wave2 { opacity: 0; }
 #enemy-name {
     font-size: .95rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
     text-shadow: 0 2px 10px rgba(0, 0, 0, .8);
@@ -376,29 +395,32 @@ button { font: inherit; color: inherit; border: 0; padding: 0; background: none;
     z-index: 3;
 }
 .mod {
-    width: 38px; height: 38px; border-radius: 11px;
+    width: 44px; height: 44px; border-radius: 13px;
     display: grid; place-items: center;
     background: rgba(8, 4, 14, .78);
     box-shadow: inset 0 0 0 1.5px var(--m, #ff8f6a), 0 3px 10px -3px #000;
     backdrop-filter: blur(5px);
     color: var(--m, #ff8f6a);
-    /* prima entrano, poi restano a pulsare: un badge fermo in un angolo del
-       ritratto non lo guarda nessuno, e questi cambiano le regole del turno */
+    /* Prima entrano, poi ogni tanto **tremano**. L'alone che va e viene non si
+       vedeva: il movimento invece l'occhio lo prende anche di lato, e sta
+       fermo abbastanza a lungo da non dare fastidio. */
     animation: modIn 320ms cubic-bezier(.2, 1.5, .4, 1) backwards,
-               modPulse 1.9s ease-in-out 320ms infinite;
+               modShake 3.4s ease-in-out 700ms infinite;
 }
-@keyframes modPulse {
-    0%, 100% { box-shadow: inset 0 0 0 1.5px var(--m, #ff8f6a), 0 3px 10px -3px #000; }
-    50%      { box-shadow: inset 0 0 0 2px var(--m, #ff8f6a),
-                           0 3px 10px -3px #000,
-                           0 0 16px -1px var(--m, #ff8f6a); }
+@keyframes modShake {
+    0%, 74%, 100% { transform: translate(0, 0) rotate(0deg); }
+    77% { transform: translate(-2px, 0) rotate(-6deg); }
+    81% { transform: translate(2px, 0)  rotate(6deg); }
+    85% { transform: translate(-2px, 0) rotate(-5deg); }
+    89% { transform: translate(2px, 0)  rotate(4deg); }
+    93% { transform: translate(-1px, 0) rotate(-2deg); }
 }
-/* toccato e letto: la pulsazione si ferma */
+/* toccato e letto: il tremolio si ferma */
 .mod.letto { animation: modIn 320ms cubic-bezier(.2, 1.5, .4, 1) backwards; }
 @media (prefers-reduced-motion: reduce) {
     .mod { animation: modIn 320ms cubic-bezier(.2, 1.5, .4, 1) backwards; }
 }
-.mod svg { width: 24px; height: 24px; display: block; }
+.mod svg { width: 27px; height: 27px; display: block; }
 @keyframes modIn { from { opacity: 0; transform: translateY(8px) scale(.7) } to { opacity: 1; transform: none } }
 .mod:active { transform: scale(.92); }
 
@@ -646,15 +668,15 @@ button { font: inherit; color: inherit; border: 0; padding: 0; background: none;
 
 /* gli interruttori, che dalla barra sono passati qui: nella barra ci sta
    soltanto quello che serve **durante** un colpo, il resto e' a un tocco */
-#help-switches { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 2px; }
+#help-switches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 2px; }
 .switch {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 11px; border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+    padding: 10px 6px; border-radius: 12px;
     background: rgba(255, 255, 255, .07);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16);
-    font-size: .8rem; font-weight: 700;
+    font-size: .7rem; font-weight: 700;
 }
-.switch .ico { width: 19px; height: 19px; display: block; }
+.switch .ico { width: 21px; height: 21px; display: block; }
 .switch .slash { opacity: 0; }
 .switch.muted { opacity: .45; }
 .switch.muted .slash { opacity: 1; }

@@ -514,28 +514,25 @@ document.addEventListener('visibilitychange', () => {
    Ognuno esce una volta sola e non torna piu'; la casella li spegne tutti per
    sempre, per chi le regole le sa gia'. */
 const Tips = {
-    off: localStorage.getItem('elementBattle.tips') === 'off',
-    visti: (function () {
-        try { return new Set(JSON.parse(localStorage.getItem('elementBattle.tipsSeen')) || []); }
-        catch (e) { return new Set(); }
-    })(),
+    /* Due livelli, e uno solo sopravvive allo spegnimento.
+
+       `mai` e' l'impostazione vera: sta nel magazzino e si cambia dal
+       pannello `?`. `off` e `visti` vivono **solo in memoria**, quindi
+       riaprendo il gioco i fumetti ricominciano da capo — la casella sul
+       fumetto vale per questa partita, non per sempre. */
+    mai: localStorage.getItem('elementBattle.tipsOff') === 'yes',
+    off: false,
+    visti: new Set(),
     coda: [],
-    da_mostrare(id) { return !this.off && !this.visti.has(id); },
-    segna(id) {
-        this.visti.add(id);
-        try { localStorage.setItem('elementBattle.tipsSeen', JSON.stringify([...this.visti])); }
-        catch (e) { /* niente */ }
-    },
-    spegni() {
-        this.off = true;
-        localStorage.setItem('elementBattle.tips', 'off');
-    },
-    riaccendi() {
-        this.off = false;
-        this.visti.clear();
-        this.coda.length = 0;
-        localStorage.removeItem('elementBattle.tips');
-        localStorage.removeItem('elementBattle.tipsSeen');
+    da_mostrare(id) { return !this.mai && !this.off && !this.visti.has(id); },
+    segna(id) { this.visti.add(id); },
+    spegni() { this.off = true; this.coda.length = 0; },
+    /* l'interruttore delle impostazioni: acceso azzera anche la partita in corso */
+    permanente(spente) {
+        this.mai = spente;
+        if (spente) { localStorage.setItem('elementBattle.tipsOff', 'yes'); this.coda.length = 0; }
+        else        { localStorage.removeItem('elementBattle.tipsOff');
+                      this.off = false; this.visti.clear(); }
     }
 };
 
@@ -618,7 +615,8 @@ class Game {
             mysteryGo:    $('#btn-mystery-go'),
             toast:     $('#toast'),
             sound:     $('#btn-sound'),
-            music:     $('#btn-music')
+            music:     $('#btn-music'),
+            tips:      $('#btn-tips')
         };
 
         Particles.init($('#particles'));
@@ -808,6 +806,16 @@ class Game {
         if (this.totalAttacks() === 0) this.gameOver();
     }
 
+    /* Suoni, musica e fumetti si comandano da due posti: qui si rimettono
+       d'accordo tutti gli interruttori con lo stato vero. */
+    renderSwitches() {
+        this.dom.sound.classList.toggle('muted', !Sfx.on);
+        this.dom.music.classList.toggle('muted', !Music.on);
+        this.dom.tips.classList.toggle('muted', Tips.mai);
+        $('#btn-sound2').classList.toggle('muted', !Sfx.on);
+        $('#btn-music2').classList.toggle('muted', !Music.on);
+    }
+
     /* --------------------------------------------------------- fumetti */
 
     /* Il fumetto si posiziona misurando il bersaglio, quindi va aperto quando
@@ -859,7 +867,7 @@ class Game {
 
         Sfx.tap();
         this.dom.tipOk.onclick = () => {
-            if (this.dom.tipBox.checked) { Tips.spegni(); Tips.coda.length = 0; }
+            if (this.dom.tipBox.checked) Tips.spegni();
             box.hidden = true;
             this.dom.tipVeil.hidden = true;
             this.dom.tipOk.onclick = null;
@@ -1499,19 +1507,6 @@ class Game {
         dice('Music', 'Chiptune loops by Abstraction — tallbeard.itch.io/music-loop-bundle');
         dice('Attacks are the clock', 'Every attack you spend is gone. The game ends when your hand is empty, not when your health runs out.');
 
-        /* i fumetti escono una volta sola: senza un modo per riaverli, uno
-           saltato e' perso per sempre */
-        const rivedi = el('button', 'switch help-tips');
-        rivedi.appendChild(el('span', null, Tips.off || Tips.visti.size ? 'Show tips again' : 'Tips are on'));
-        rivedi.disabled = !(Tips.off || Tips.visti.size);
-        rivedi.onclick = () => {
-            Tips.riaccendi();
-            rivedi.disabled = true;
-            rivedi.firstChild.textContent = 'Tips are on';
-            Sfx.gain();
-        };
-        note.appendChild(rivedi);
-
         this.dom.help.hidden = false;
         this.dom.helpGo.onclick = () => { this.dom.help.hidden = true; };
     }
@@ -2026,20 +2021,32 @@ class Game {
         $('#btn-ending-menu').onclick = () => { this.dom.ending.hidden = true; this.showStart(); };
         this.dom.sound.onclick     = () => {
             const on = Sfx.toggle();
-            this.dom.sound.classList.toggle('muted', !on);
             this.dom.sound.setAttribute('aria-label', on ? 'Sound on' : 'Sound off');
+            this.renderSwitches();
         };
         this.dom.sound.classList.toggle('muted', !Sfx.on);
 
         this.dom.music.onclick = () => {
             Sfx.ensure();
             const on = Music.toggle();
-            this.dom.music.classList.toggle('muted', !on);
             this.dom.music.setAttribute('aria-label', on ? 'Music on' : 'Music off');
+            this.renderSwitches();
         };
         this.dom.music.classList.toggle('muted', !Music.on);
 
+        /* gli stessi due comandi stanno anche accanto al nome del mostro: due
+           posti, un solo stato, e si aggiornano insieme */
+        $('#btn-sound2').onclick = () => this.dom.sound.onclick();
+        $('#btn-music2').onclick = () => this.dom.music.onclick();
+
+        this.dom.tips.onclick = () => {
+            Sfx.tap();
+            Tips.permanente(!Tips.mai);
+            this.renderSwitches();
+        };
+
         $('#btn-help').onclick = () => { Sfx.tap(); this.showHelp(); };
+        this.renderSwitches();
     }
 
     bindDebugKeys() {
